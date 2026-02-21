@@ -18,6 +18,7 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import EnergyConverter
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api.constants import ValueType
@@ -66,28 +67,34 @@ class Importer:
 
     @staticmethod
     @lru_cache(maxsize=1)
-    def _statistics_metadata_extensions() -> dict[str, Any]:
-        """Build recorder metadata extensions only when supported by current HA core."""
-        extras: dict[str, Any] = {}
+    def _statistics_metadata_capabilities() -> dict[str, Any]:
+        """Detect recorder metadata fields supported by the current HA core."""
+        capabilities: dict[str, Any] = {
+            "has_mean": True,
+            "has_sum": True,
+            "unit_class": False,
+            "mean_type": False,
+            "mean_type_none": 0,
+        }
         try:
             from homeassistant.components.recorder.db_schema import StatisticsMeta
 
             columns = set(StatisticsMeta.__table__.columns.keys())
-            if "unit_class" in columns:
-                extras["unit_class"] = "energy"
-            if "mean_type" in columns:
-                mean_type_none: Any = "none"
+            capabilities["has_mean"] = "has_mean" in columns
+            capabilities["has_sum"] = "has_sum" in columns
+            capabilities["unit_class"] = "unit_class" in columns
+            capabilities["mean_type"] = "mean_type" in columns
+            if capabilities["mean_type"]:
                 try:
                     from homeassistant.components.recorder.models import StatisticMeanType
 
-                    mean_type_none = StatisticMeanType.NONE
+                    capabilities["mean_type_none"] = StatisticMeanType.NONE
                 except Exception:  # pylint: disable=broad-except
-                    mean_type_none = "none"
-                extras["mean_type"] = mean_type_none
+                    capabilities["mean_type_none"] = 0
         except Exception:  # pylint: disable=broad-except
             # Keep compatibility with older HA cores where these fields do not exist.
-            return {}
-        return extras
+            return capabilities
+        return capabilities
 
     @staticmethod
     def _to_datetime(value: Any) -> datetime | None:
@@ -164,6 +171,13 @@ class Importer:
         )
         async_add_external_statistics(self.hass, cumulative_metadata, cumulative_statistics)
 
+    def _ensure_statistics_metadata(self) -> None:
+        """Ensure metadata is updated for existing statistic IDs across core versions."""
+        async_add_external_statistics(self.hass, self.get_statistics_metadata(), [])
+        async_add_external_statistics(
+            self.hass, self.get_cumulative_statistics_metadata(), []
+        )
+
     def prepare_start_off_point(self, last_inserted_stat):
         # Previous data found in the statistics table
         _sum = Decimal(last_inserted_stat[self.id][0]["sum"])
@@ -217,6 +231,8 @@ class Importer:
                 _LOGGER.debug("Smartmeter %s is not active" % zaehlpunkt)
                 return
 
+            self._ensure_statistics_metadata()
+
             if not self.is_last_inserted_stat_valid(last_inserted_stat):
                 # No previous data - start from scratch
                 _LOGGER.warning("Starting import of historical data. This might take some time.")
@@ -250,27 +266,39 @@ class Importer:
             _LOGGER.exception("Error retrieving data from smart meter api - Error: %s" % e)
 
     def get_statistics_metadata(self):
+        capabilities = self._statistics_metadata_capabilities()
         metadata: dict[str, Any] = {
             "source": DOMAIN,
             "statistic_id": self.id,
             "name": self.zaehlpunkt,
             "unit_of_measurement": self.unit_of_measurement,
-            "has_mean": False,
-            "has_sum": True,
         }
-        metadata.update(self._statistics_metadata_extensions())
+        if capabilities["has_mean"]:
+            metadata["has_mean"] = False
+        if capabilities["has_sum"]:
+            metadata["has_sum"] = True
+        if capabilities["unit_class"]:
+            metadata["unit_class"] = EnergyConverter.UNIT_CLASS
+        if capabilities["mean_type"]:
+            metadata["mean_type"] = capabilities["mean_type_none"]
         return StatisticMetaData(**metadata)
 
     def get_cumulative_statistics_metadata(self):
+        capabilities = self._statistics_metadata_capabilities()
         metadata: dict[str, Any] = {
             "source": DOMAIN,
             "statistic_id": self.cumulative_id,
             "name": f"{self.zaehlpunkt} cumulative",
             "unit_of_measurement": self.unit_of_measurement,
-            "has_mean": False,
-            "has_sum": False,
         }
-        metadata.update(self._statistics_metadata_extensions())
+        if capabilities["has_mean"]:
+            metadata["has_mean"] = False
+        if capabilities["has_sum"]:
+            metadata["has_sum"] = False
+        if capabilities["unit_class"]:
+            metadata["unit_class"] = EnergyConverter.UNIT_CLASS
+        if capabilities["mean_type"]:
+            metadata["mean_type"] = capabilities["mean_type_none"]
         return StatisticMetaData(**metadata)
 
     async def _initial_import_statistics(self):
