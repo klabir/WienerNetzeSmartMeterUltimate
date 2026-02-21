@@ -5,6 +5,11 @@ DOMAIN = "wnsm"
 
 CONF_ZAEHLPUNKTE = "zaehlpunkte"
 CONF_SELECTED_ZAEHLPUNKTE = "selected_zaehlpunkte"
+CONF_SCAN_INTERVAL = "scan_interval"
+DEFAULT_SCAN_INTERVAL_MINUTES = 360
+CONF_ENABLE_RAW_API_RESPONSE_WRITE = "enable_raw_api_response_write"
+CONF_ENABLE_DAILY_CONS = "enable_daily_cons"
+DEFAULT_ENABLE_DAILY_CONS = True
 
 ATTRS_ZAEHLPUNKT_CALL = [
     ("zaehlpunktnummer", "zaehlpunktnummer"),

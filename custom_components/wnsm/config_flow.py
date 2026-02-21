@@ -11,18 +11,18 @@ from homeassistant.helpers import selector
 from .api import Smartmeter
 from .const import (
     ATTRS_ZAEHLPUNKTE_CALL,
+    CONF_ENABLE_DAILY_CONS,
+    CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+    CONF_SCAN_INTERVAL,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
+    DEFAULT_ENABLE_DAILY_CONS,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
-
-CONF_SCAN_INTERVAL = "scan_interval"
-CONF_ENABLE_RAW_API_RESPONSE_WRITE = "enable_raw_api_response_write"
-DEFAULT_SCAN_INTERVAL_MINUTES = 360
-
 
 def _scan_interval_field(default_scan_interval: int):
     """Return a version-safe scan interval field."""
@@ -124,6 +124,9 @@ def user_schema(default_scan_interval: int):
                 default_scan_interval
             ),
             vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
+            vol.Optional(
+                CONF_ENABLE_DAILY_CONS, default=DEFAULT_ENABLE_DAILY_CONS
+            ): cv.boolean,
         }
     )
 
@@ -306,6 +309,16 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                                     ),
                                 ),
                             ): cv.boolean,
+                            vol.Optional(
+                                CONF_ENABLE_DAILY_CONS,
+                                default=config_entry.options.get(
+                                    CONF_ENABLE_DAILY_CONS,
+                                    config_entry.data.get(
+                                        CONF_ENABLE_DAILY_CONS,
+                                        DEFAULT_ENABLE_DAILY_CONS,
+                                    ),
+                                ),
+                            ): cv.boolean,
                             vol.Required(
                                 CONF_SELECTED_ZAEHLPUNKTE,
                                 default=current_selected_meters,
@@ -329,6 +342,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
             CONF_ENABLE_RAW_API_RESPONSE_WRITE,
             config_entry.data.get(CONF_ENABLE_RAW_API_RESPONSE_WRITE, False),
         )
+        current_enable_daily_cons = config_entry.options.get(
+            CONF_ENABLE_DAILY_CONS,
+            config_entry.data.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS),
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -341,6 +358,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_ENABLE_RAW_API_RESPONSE_WRITE,
                         default=current_enable_raw_api_response_write,
+                    ): cv.boolean,
+                    vol.Optional(
+                        CONF_ENABLE_DAILY_CONS,
+                        default=current_enable_daily_cons,
                     ): cv.boolean,
                     vol.Required(
                         CONF_SELECTED_ZAEHLPUNKTE,

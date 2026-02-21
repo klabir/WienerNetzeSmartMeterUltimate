@@ -25,10 +25,12 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         zaehlpunkte: list[str],
         scan_interval_minutes: int,
         enable_raw_api_response_write: bool,
+        enable_daily_cons_statistics: bool,
         log_scope: str,
     ) -> None:
         self._zaehlpunkte = zaehlpunkte
         self._enable_raw_api_response_write = enable_raw_api_response_write
+        self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._smartmeter = Smartmeter(
             username=username,
             password=password,
@@ -77,6 +79,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         data: dict[str, dict[str, Any]] = {}
         for zaehlpunkt in self._zaehlpunkte:
             native_value: float | int | None = 0
+            daily_cons_value: float | int | None = None
             attributes: dict[str, Any] = {}
             available = True
             try:
@@ -98,8 +101,11 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         UnitOfEnergy.KILO_WATT_HOUR,
                         skip_login=True,
                         preloaded_zaehlpunkt=zaehlpunkt_response,
+                        enable_daily_consumption_statistics=self._enable_daily_cons_statistics,
                     )
-                    await importer.async_import()
+                    importer_result = await importer.async_import()
+                    if isinstance(importer_result, dict):
+                        daily_cons_value = importer_result.get("daily_consumption_value")
             except Exception as exception:  # pylint: disable=broad-except
                 available = False
                 attributes["last_error"] = str(exception)
@@ -108,6 +114,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             self._inject_api_log_attributes(zaehlpunkt, attributes)
             data[zaehlpunkt] = {
                 "native_value": native_value,
+                "daily_cons_value": daily_cons_value,
                 "attributes": attributes,
                 "available": available,
             }

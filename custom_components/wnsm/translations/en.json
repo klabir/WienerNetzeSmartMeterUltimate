@@ -14,7 +14,8 @@
           "username": "Username",
           "password": "Password",
           "scan_interval": "Scan interval (minutes)",
-          "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls"
+          "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
+          "enable_daily_cons": "Enable _daily_cons statistics and sensor"
         }        
       },
       "select_meters": {
@@ -37,6 +38,7 @@
         "data": {
           "scan_interval": "Scan interval (minutes)",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
+          "enable_daily_cons": "Enable _daily_cons statistics and sensor",
           "selected_zaehlpunkte": "Meters"
         }
       }

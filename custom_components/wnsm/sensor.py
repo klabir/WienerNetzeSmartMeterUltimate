@@ -21,21 +21,33 @@ from homeassistant.helpers.typing import (
     ConfigType,
     DiscoveryInfoType,
 )
-from .const import CONF_SELECTED_ZAEHLPUNKTE, CONF_ZAEHLPUNKTE, DOMAIN
+from .const import (
+    CONF_ENABLE_DAILY_CONS,
+    CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+    CONF_SCAN_INTERVAL,
+    CONF_SELECTED_ZAEHLPUNKTE,
+    CONF_ZAEHLPUNKTE,
+    DEFAULT_ENABLE_DAILY_CONS,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
+    DOMAIN,
+)
 from .coordinator import WNSMDataUpdateCoordinator
+from .daily_cons_sensor import WNSMDailyConsSensor
 from .wnsm_sensor import WNSMSensor
 
 _LOGGER = logging.getLogger(__name__)
 # Time between updating data from Wiener Netze
 SCAN_INTERVAL = timedelta(minutes=60 * 6)
-CONF_ENABLE_RAW_API_RESPONSE_WRITE = "enable_raw_api_response_write"
-CONF_SCAN_INTERVAL = "scan_interval"
-DEFAULT_SCAN_INTERVAL_MINUTES = 360
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_USERNAME): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
         vol.Required(CONF_DEVICE_ID): cv.string,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL_MINUTES
+        ): vol.All(vol.Coerce(int), vol.Range(min=5, max=720)),
+        vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
+        vol.Optional(CONF_ENABLE_DAILY_CONS, default=DEFAULT_ENABLE_DAILY_CONS): cv.boolean,
     }
 )
 
@@ -88,6 +100,12 @@ async def async_setup_entry(
             config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES),
         )
     )
+    enable_daily_cons = bool(
+        config_entry.options.get(
+            CONF_ENABLE_DAILY_CONS,
+            config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS),
+        )
+    )
     zaehlpunkte = _resolve_selected_zaehlpunkte(config_entry)
     coordinator = WNSMDataUpdateCoordinator(
         hass=hass,
@@ -96,14 +114,20 @@ async def async_setup_entry(
         zaehlpunkte=zaehlpunkte,
         scan_interval_minutes=scan_interval,
         enable_raw_api_response_write=enable_raw_api_response_write,
+        enable_daily_cons_statistics=enable_daily_cons,
         log_scope=config_entry.entry_id,
     )
     await coordinator.async_config_entry_first_refresh()
-    wnsm_sensors = [
+    entities = [
         WNSMSensor(coordinator, zaehlpunkt)
         for zaehlpunkt in zaehlpunkte
     ]
-    async_add_entities(wnsm_sensors)
+    if enable_daily_cons:
+        entities.extend(
+            WNSMDailyConsSensor(coordinator, zaehlpunkt)
+            for zaehlpunkt in zaehlpunkte
+        )
+    async_add_entities(entities)
 
 
 async def async_setup_platform(
@@ -120,10 +144,20 @@ async def async_setup_platform(
         username=config[CONF_USERNAME],
         password=config[CONF_PASSWORD],
         zaehlpunkte=[config[CONF_DEVICE_ID]],
-        scan_interval_minutes=int(SCAN_INTERVAL.total_seconds() // 60),
-        enable_raw_api_response_write=False,
+        scan_interval_minutes=int(
+            config.get(CONF_SCAN_INTERVAL, SCAN_INTERVAL.total_seconds() // 60)
+        ),
+        enable_raw_api_response_write=bool(
+            config.get(CONF_ENABLE_RAW_API_RESPONSE_WRITE, False)
+        ),
+        enable_daily_cons_statistics=bool(
+            config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS)
+        ),
         log_scope="yaml",
     )
     await coordinator.async_config_entry_first_refresh()
     wnsm_sensor = WNSMSensor(coordinator, config[CONF_DEVICE_ID])
-    async_add_entities([wnsm_sensor], update_before_add=True)
+    entities = [wnsm_sensor]
+    if bool(config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS)):
+        entities.append(WNSMDailyConsSensor(coordinator, config[CONF_DEVICE_ID]))
+    async_add_entities(entities, update_before_add=True)
