@@ -23,7 +23,9 @@ This document specifies the exact logging changes that were implemented so anoth
      - fallback `False`
 2. If enabled:
    - Each API call made via `Smartmeter._call_api()` is written to:
-     - `/config/tmp/wnsm_api_calls/*.json`
+     - `/config/tmp/wnsm_api_calls/<zaehlpunkt>/*.json`
+   - Before the first write of a logging session, the root logging directory is fully cleaned:
+     - `/config/tmp/wnsm_api_calls` including all nested subfolders/files
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
@@ -105,11 +107,13 @@ New fields:
 
 - `self._enable_raw_api_response_write`
 - `self._raw_api_response_dir = "/config/tmp/wnsm_api_calls"`
+- `self._raw_api_log_prepared = False`
 - `self._recent_api_calls = []`
 - `self._max_recent_api_calls = 20`
 
 ### `reset()` update
 
+- Resets `self._raw_api_log_prepared = False`
 - Resets `self._recent_api_calls = []`
 
 ### New helper methods
@@ -122,21 +126,38 @@ New fields:
      - `X-Gateway-APIKey` -> `"***"`
 3. `_write_raw_api_response(payload, endpoint, method) -> str | None`
    - No-op if toggle disabled.
-   - Ensures folder exists: `/config/tmp/wnsm_api_calls`
+   - Calls directory preparation once per session via `_prepare_raw_api_response_dir()`.
+   - Resolves target meter via `_extract_zaehlpunkt_for_log(endpoint, query, request_body)`.
+   - Writes into per-meter subfolder:
+     - `/config/tmp/wnsm_api_calls/<sanitized_zaehlpunkt>/`
    - Writes pretty JSON file:
-     - filename format: `{timestamp}_{method}_{sanitized_endpoint}.json`
+      - filename format: `{timestamp}_{method}_{sanitized_endpoint}.json`
    - Returns file path or `None`
-4. `_record_api_call(...)`
+4. `_prepare_raw_api_response_dir()`
+   - If already prepared in current session: no-op
+   - Else:
+     - delete `/config/tmp/wnsm_api_calls` recursively (including subdirs/files)
+     - recreate `/config/tmp/wnsm_api_calls`
+     - mark prepared flag `True`
+5. `_extract_zaehlpunkt_for_log(endpoint, query, request_body) -> str`
+   - Priority:
+     1. `query["zaehlpunkt"]` if present
+     2. `request_body["zaehlpunkt"]` if present
+     3. regex from endpoint:
+        - `messdaten/[^/]+/([^/]+)/`
+        - `zaehlpunkte/[^/]+/([^/]+)/`
+     4. fallback `"general"`
+6. `_record_api_call(...)`
    - Builds full payload with:
-     - timestamp, method, endpoint, url, query
-     - redacted request headers
-     - request body
-     - response status
-     - response body
+      - timestamp, method, endpoint, url, query
+      - redacted request headers
+      - request body
+      - response status
+      - response body
    - Calls `_write_raw_api_response(...)`
    - Pushes summary to `_recent_api_calls`
    - Keeps only newest 20 entries
-5. `get_recent_api_calls() -> list[dict]`
+7. `get_recent_api_calls() -> list[dict]`
    - Returns shallow copy of in-memory summaries
 
 ### `_call_api(...)` logging integration
@@ -190,6 +211,10 @@ When enabled, each JSON file contains:
 Target directory:
 
 - `/config/tmp/wnsm_api_calls`
+- subfolder per meter:
+  - `/config/tmp/wnsm_api_calls/<zaehlpunkt>/`
+- fallback subfolder when no meter is detectable:
+  - `/config/tmp/wnsm_api_calls/general/`
 
 ## Rebuild checklist
 
@@ -198,6 +223,8 @@ Target directory:
 3. Extend `Smartmeter` with:
    - in-memory recent call store
    - optional file writer
+   - per-zaehlpunkt log subfolders
+   - one-time recursive cleanup of logging root before first write
    - `_call_api` record hook
 4. Ensure sensitive headers are redacted in persisted payload.
 5. Keep existing API auth and sensor/statistics logic unchanged except wiring/logging additions.
