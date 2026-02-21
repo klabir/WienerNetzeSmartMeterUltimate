@@ -323,24 +323,44 @@ class Importer:
 
         bewegungsdaten = await self.async_smartmeter.get_bewegungsdaten(self.zaehlpunkt, start, end, self.granularity)
         _LOGGER.debug(f"Mapped historical data: {bewegungsdaten}")
-        if bewegungsdaten['unitOfMeasurement'] == 'WH':
+
+        values = bewegungsdaten.get("values") or []
+        if len(values) == 0:
+            _LOGGER.debug(
+                "Batch of data starting at %s does not contain bewegungsdaten. "
+                "Seems there is nothing to import, yet.",
+                start,
+            )
+            return
+
+        unit_of_measurement = bewegungsdaten.get("unitOfMeasurement")
+        if unit_of_measurement is None:
+            raise ValueError(
+                "WienerNetze returned non-empty bewegungsdaten without unitOfMeasurement"
+            )
+        unit_of_measurement = str(unit_of_measurement).upper()
+        if unit_of_measurement == 'WH':
             factor = 1e-3
-        elif bewegungsdaten['unitOfMeasurement'] == 'KWH':
+        elif unit_of_measurement == 'KWH':
             factor = 1.0
         else:
-            raise NotImplementedError(f'Unit {bewegungsdaten["unitOfMeasurement"]}" is not yet implemented. Please report!')
+            raise NotImplementedError(
+                f'Unit {unit_of_measurement}" is not yet implemented. Please report!'
+            )
 
         dates = defaultdict(Decimal)
-        if 'values' not in bewegungsdaten:
-            raise ValueError("WienerNetze does not report historical data (yet)")
-        total_consumption = sum([v.get("wert", 0) for v in bewegungsdaten['values']])
+        total_consumption = sum([v.get("wert", 0) for v in values])
         # Can actually check, if the whole batch can be skipped.
         if total_consumption == 0:
-            _LOGGER.debug(f"Batch of data starting at {start} does not contain any bewegungsdaten. Seems there is nothing to import, yet.")
+            _LOGGER.debug(
+                "Batch of data starting at %s does not contain any bewegungsdaten. "
+                "Seems there is nothing to import, yet.",
+                start,
+            )
             return
 
         last_ts = start
-        for value in bewegungsdaten['values']:
+        for value in values:
             ts = dt_util.parse_datetime(value['zeitpunktVon'])
             if ts < last_ts:
                 # This should prevent any issues with ambiguous values though...
