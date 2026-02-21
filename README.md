@@ -13,7 +13,12 @@ YAML configuration is not supported.
 
 Use the Home Assistant integration dialog to enter your Wiener Netze username and password.
 
-![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/wnsm5.png)
+![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/loginscreen.png)
+
+After login, Home Assistant opens meter selection. Keep the active meters selected and submit.
+Inactive meters can appear in the list, but are usually not preselected.
+
+![Wiener Netze Smartmeter - Select meters](doc/SelectedMeters.png)
 
 ## What You Get
 
