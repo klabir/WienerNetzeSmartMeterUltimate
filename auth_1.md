@@ -1,0 +1,117 @@
+# WNSM Auth Patch Notes (Auth-Only Delta)
+
+This file documents the **recent authentication-only changes** that were applied, so another LLM can rebuild the same patch precisely.
+
+## Scope
+
+- File changed: `custom_components/wnsm/api/client.py`
+- No config-flow UI changes
+- No sensor/statistics/logging wiring changes
+- Existing auth flow structure remains:
+  - `load_login_page()` -> `credentials_login()` -> `load_tokens()` -> `_get_api_key()`
+
+## Goals of the patch
+
+1. Keep the existing OIDC/PKCE login chain behavior.
+2. Improve robustness around HTML form extraction and token validation.
+3. Preserve error semantics with `SmartmeterConnectionError` / `SmartmeterLoginError`.
+
+## Exact changes
+
+### 1) Centralized first form action extraction
+
+Added helper method:
+
+- `Smartmeter._extract_first_form_action(content, no_form_error)`
+
+Behavior:
+
+1. Parse HTML via `lxml.html.fromstring(content)`.
+2. Extract form actions with XPath `(//form/@action)`.
+3. If no form exists, raise:
+   - `SmartmeterConnectionError(no_form_error)`
+4. Return first action URL (`forms[0]`).
+
+### 2) `load_login_page()` now uses helper
+
+Before:
+
+- Parsed HTML inline and checked for missing form.
+
+Now:
+
+- Calls `_extract_first_form_action(result.content, "No form found on the login page.")`.
+
+Net effect:
+
+- Same external behavior, cleaner shared logic.
+
+### 3) `credentials_login(url)` now uses helper for first POST response
+
+Before:
+
+- Parsed first POST response HTML inline via `tree.xpath(...)[0]` (could raise index errors).
+
+Now:
+
+- Calls `_extract_first_form_action(result.content, "Could not login with credentials")`.
+
+Net effect:
+
+- Missing form is converted into consistent `SmartmeterConnectionError` in auth path.
+
+### 4) `load_tokens(code)` bearer check hardened
+
+Before:
+
+- Used `tokens["token_type"]` directly.
+
+Now:
+
+- Uses `token_type = tokens.get("token_type")`.
+- Raises:
+  - `SmartmeterLoginError(f"Bearer token required, but got {token_type!r}")`
+  when token type is not `"Bearer"` (including missing key).
+
+Net effect:
+
+- Avoids unhandled `KeyError`; keeps auth failure in expected login-error class.
+
+### 5) `_access_valid_or_raise()` handles uninitialized token state
+
+Before:
+
+- Compared `datetime.now() >= self._access_token_expiration` directly.
+- Could fail if expiration was `None`.
+
+Now:
+
+1. If `_access_token is None` or `_access_token_expiration is None`, raise:
+   - `SmartmeterConnectionError("Access Token is not valid anymore, please re-log!")`
+2. Keep existing expiry-time check and same error message.
+
+Net effect:
+
+- Consistent failure semantics when token state is missing/uninitialized.
+
+## Rebuild checklist for another LLM
+
+1. Edit only `custom_components/wnsm/api/client.py`.
+2. Add `_extract_first_form_action(content, no_form_error)` static method in `Smartmeter`.
+3. Replace inline form parsing in:
+   - `load_login_page()`
+   - `credentials_login()`
+   with helper usage.
+4. In `load_tokens()`, switch bearer validation to `tokens.get("token_type")`.
+5. In `_access_valid_or_raise()`, add early guard for missing token or expiration.
+6. Keep all existing auth messages unchanged except the bearer message now prints `None` if missing.
+7. Do not modify config flow, sensors, importer, statistics, or runtime wiring.
+
+## Post-change verification done
+
+- Syntax check passed:
+  - `python -m py_compile custom_components/wnsm/api/client.py`
+
+## Notes about test environment issue (not code behavior)
+
+- Auth tests could not be executed in this environment because local `pytest_socket` policy blocks sockets needed by `pytest-asyncio` event loop creation on Windows.
