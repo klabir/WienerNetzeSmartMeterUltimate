@@ -24,9 +24,17 @@ Inactive meters can appear in the list, but are usually not preselected.
 
 For each selected meter (`zaehlpunkt`), the integration can create up to 3 sensor entities.
 
+Entities view example (meter numbers blurred, suffixes kept readable):
+
+![Wiener Netze Smartmeter - Created entities overview](doc/Entities_blurred.png)
+
+Statistics view example (meter numbers blurred, suffixes kept readable):
+
+![Wiener Netze Smartmeter - Created statistics streams overview](doc/statistics_blurred.png)
+
 ## Created Sensors
 
-`<zaehlpunkt>` below means your meter ID, for example `at0010000000000000001000009104483`.
+`<zaehlpunkt>` below means your meter ID, for example `at0010000000000000001000009111111`.
 
 | Entity ID pattern | Created by default | Type | Description |
 | --- | --- | --- | --- |
