@@ -42,6 +42,66 @@ After successful configuration you can add sensors to your favourite dashboard, 
 
 ### Manual
 See [Example configuration files](https://github.com/DarwinsBuddy/WienerNetzeSmartmeter/blob/main/example/configuration.yaml)
+
+## Testing
+
+### Environment
+
+Install test dependencies:
+
+```powershell
+python -m pip install -r tests/requirements.txt
+```
+
+### Fast validation after code changes
+
+Syntax check for core integration modules:
+
+```powershell
+python -m py_compile custom_components/wnsm/api/client.py custom_components/wnsm/coordinator.py custom_components/wnsm/sensor.py custom_components/wnsm/wnsm_sensor.py custom_components/wnsm/config_flow.py
+```
+
+### Run test suite
+
+From repository root:
+
+```powershell
+python -m pytest -q -c tests/setup.cfg
+```
+
+If your local environment blocks event-loop sockets via `pytest_socket` (common on Windows + Home Assistant test stack), disable that plugin for test runs:
+
+```powershell
+python -m pytest -q -c tests/setup.cfg -p no:socket
+```
+
+### Focused tests for recent changes
+
+Authentication and API behavior:
+
+```powershell
+python -m pytest -q tests/it/test_api.py -k "login or access_key_expired" -p no:socket
+```
+
+Config-flow/options-flow compatibility:
+
+```powershell
+python -m py_compile custom_components/wnsm/config_flow.py
+```
+
+### Manual regression checklist (Home Assistant)
+
+1. Add integration via UI and verify config flow completes without 500.
+2. Open options flow, save, and confirm integration reloads.
+3. Set `scan_interval` to a low value (e.g. 5 min), verify coordinator updates at that interval.
+4. Toggle `enable_raw_api_response_write`:
+   - when enabled, verify files under `/config/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/`
+   - verify directory is cleaned once per new client session before first write
+5. Verify sensor attributes include:
+   - `raw_api_logging_enabled`
+   - `api_call_count`
+   - `recent_api_calls`
+   - `last_api_call_file`
 ## Copyright
 
 This integration uses the API of https://www.wienernetze.at/smartmeter
