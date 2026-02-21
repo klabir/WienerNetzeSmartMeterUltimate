@@ -2,7 +2,9 @@ import logging
 from collections import defaultdict
 from datetime import timedelta, timezone, datetime
 from decimal import Decimal
+from functools import lru_cache
 from operator import itemgetter
+from typing import Any
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import (
@@ -10,7 +12,9 @@ from homeassistant.components.recorder.models import (
     StatisticMetaData,
 )
 from homeassistant.components.recorder.statistics import (
-    get_last_statistics, async_add_external_statistics,
+    async_add_external_statistics,
+    get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -20,6 +24,7 @@ from .api.constants import ValueType
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class Importer:
 
@@ -34,6 +39,7 @@ class Importer:
         preloaded_zaehlpunkt: dict | None = None,
     ):
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
+        self.cumulative_id = f"{self.id}_cum_abs"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
@@ -43,8 +49,120 @@ class Importer:
         self.preloaded_zaehlpunkt = preloaded_zaehlpunkt
 
     def is_last_inserted_stat_valid(self, last_inserted_stat):
-        return len(last_inserted_stat) == 1 and len(last_inserted_stat[self.id]) == 1 and \
-            "sum" in last_inserted_stat[self.id][0] and "end" in last_inserted_stat[self.id][0]
+        return (
+            self.id in last_inserted_stat
+            and len(last_inserted_stat[self.id]) == 1
+            and "sum" in last_inserted_stat[self.id][0]
+            and "end" in last_inserted_stat[self.id][0]
+        )
+
+    def is_last_inserted_cumulative_stat_valid(self, last_inserted_stat):
+        return (
+            self.cumulative_id in last_inserted_stat
+            and len(last_inserted_stat[self.cumulative_id]) == 1
+            and "state" in last_inserted_stat[self.cumulative_id][0]
+            and "end" in last_inserted_stat[self.cumulative_id][0]
+        )
+
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def _statistics_metadata_extensions() -> dict[str, Any]:
+        """Build recorder metadata extensions only when supported by current HA core."""
+        extras: dict[str, Any] = {}
+        try:
+            from homeassistant.components.recorder.db_schema import StatisticsMeta
+
+            columns = set(StatisticsMeta.__table__.columns.keys())
+            if "unit_class" in columns:
+                extras["unit_class"] = "energy"
+            if "mean_type" in columns:
+                mean_type_none: Any = "none"
+                try:
+                    from homeassistant.components.recorder.models import StatisticMeanType
+
+                    mean_type_none = StatisticMeanType.NONE
+                except Exception:  # pylint: disable=broad-except
+                    mean_type_none = "none"
+                extras["mean_type"] = mean_type_none
+        except Exception:  # pylint: disable=broad-except
+            # Keep compatibility with older HA cores where these fields do not exist.
+            return {}
+        return extras
+
+    @staticmethod
+    def _to_datetime(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+                return None
+            return dt_util.as_utc(value)
+        if isinstance(value, (int, float)):
+            return dt_util.utc_from_timestamp(value)
+        if isinstance(value, str):
+            parsed = dt_util.parse_datetime(value)
+            if parsed is None:
+                return None
+            return dt_util.as_utc(parsed)
+        return None
+
+    async def _get_last_inserted_statistics(
+        self,
+        statistic_id: str,
+        types: set[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        return await get_instance(self.hass).async_add_executor_job(
+            get_last_statistics,
+            self.hass,
+            1,  # Get at most one entry
+            statistic_id,
+            True,  # convert the units
+            types,
+        )
+
+    async def _backfill_cumulative_from_existing_sum(self) -> None:
+        """Populate cumulative state stream from existing hourly sum stream once."""
+        existing_cumulative = await self._get_last_inserted_statistics(
+            self.cumulative_id, {"state"}
+        )
+        if self.is_last_inserted_cumulative_stat_valid(existing_cumulative):
+            return
+
+        rows_by_id = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            datetime(1970, 1, 1, tzinfo=timezone.utc),
+            None,
+            {self.id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        rows = rows_by_id.get(self.id, [])
+        if not rows:
+            return
+
+        cumulative_metadata = self.get_cumulative_statistics_metadata()
+        cumulative_statistics: list[StatisticData] = []
+        for row in rows:
+            row_sum = row.get("sum")
+            row_start = self._to_datetime(row.get("start"))
+            if row_sum is None or row_start is None:
+                continue
+            cumulative_statistics.append(
+                StatisticData(
+                    start=row_start,
+                    state=float(row_sum),
+                )
+            )
+
+        if not cumulative_statistics:
+            return
+
+        _LOGGER.info(
+            "Backfilling cumulative statistics for %s with %d rows",
+            self.zaehlpunkt,
+            len(cumulative_statistics),
+        )
+        async_add_external_statistics(self.hass, cumulative_metadata, cumulative_statistics)
 
     def prepare_start_off_point(self, last_inserted_stat):
         # Previous data found in the statistics table
@@ -82,14 +200,8 @@ class Importer:
     async def async_import(self):
         # Query the statistics database for the last value
         # It is crucial to use get_instance here!
-        last_inserted_stat = await get_instance(
-            self.hass
-        ).async_add_executor_job(
-            get_last_statistics,
-            self.hass,
-            1,  # Get at most one entry
-            self.id,  # of this sensor
-            True,  # convert the units
+        last_inserted_stat = await self._get_last_inserted_statistics(
+            self.id,
             # XXX: since HA core 2022.12 need to specify this:
             {"sum", "state"},  # the fields we want to query (state might be used in the future)
         )
@@ -112,9 +224,12 @@ class Importer:
             else:
                 start_off_point = self.prepare_start_off_point(last_inserted_stat)
                 if start_off_point is None:
+                    await self._backfill_cumulative_from_existing_sum()
                     return
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
+
+            await self._backfill_cumulative_from_existing_sum()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
             # If it is set to any number, home assistant will assume that a negative consumption
@@ -124,13 +239,9 @@ class Importer:
             # same time.
             # Due to None, the sensor will always show "unkown" - but that is currently the only way
             # how historical data can be imported without rewriting the database on our own...
-            last_inserted_stat = await get_instance(self.hass).async_add_executor_job(
-                get_last_statistics,
-                self.hass,
-                1,  # Get at most one entry
-                self.id,  # of this sensor's statistics
-                True,  # convert the units
-                {"sum"}  # the fields we want to query
+            last_inserted_stat = await self._get_last_inserted_statistics(
+                self.id,
+                {"sum"},  # the fields we want to query
             )
             _LOGGER.debug("Last inserted stat: %s", last_inserted_stat)
         except TimeoutError as e:
@@ -139,14 +250,28 @@ class Importer:
             _LOGGER.exception("Error retrieving data from smart meter api - Error: %s" % e)
 
     def get_statistics_metadata(self):
-        return StatisticMetaData(
-            source=DOMAIN,
-            statistic_id=self.id,
-            name=self.zaehlpunkt,
-            unit_of_measurement=self.unit_of_measurement,
-            has_mean=False,
-            has_sum=True,
-        )
+        metadata: dict[str, Any] = {
+            "source": DOMAIN,
+            "statistic_id": self.id,
+            "name": self.zaehlpunkt,
+            "unit_of_measurement": self.unit_of_measurement,
+            "has_mean": False,
+            "has_sum": True,
+        }
+        metadata.update(self._statistics_metadata_extensions())
+        return StatisticMetaData(**metadata)
+
+    def get_cumulative_statistics_metadata(self):
+        metadata: dict[str, Any] = {
+            "source": DOMAIN,
+            "statistic_id": self.cumulative_id,
+            "name": f"{self.zaehlpunkt} cumulative",
+            "unit_of_measurement": self.unit_of_measurement,
+            "has_mean": False,
+            "has_sum": False,
+        }
+        metadata.update(self._statistics_metadata_extensions())
+        return StatisticMetaData(**metadata)
 
     async def _initial_import_statistics(self):
         return await self._import_statistics()
@@ -205,12 +330,21 @@ class Importer:
                 _LOGGER.debug(f"Not seen that before: Estimated Value found for {ts}: {reading}")
 
         statistics = []
+        cumulative_statistics = []
         metadata = self.get_statistics_metadata()
+        cumulative_metadata = self.get_cumulative_statistics_metadata()
 
         for ts, usage in sorted(dates.items(), key=itemgetter(0)):
             total_usage += usage
-            statistics.append(StatisticData(start=ts, sum=total_usage, state=float(usage)))
+            total_usage_float = float(total_usage)
+            statistics.append(
+                StatisticData(start=ts, sum=total_usage_float, state=float(usage))
+            )
+            cumulative_statistics.append(
+                StatisticData(start=ts, state=total_usage_float)
+            )
         if len(statistics) > 0:
             _LOGGER.debug(f"Importing statistics from {statistics[0]} to {statistics[-1]}")
         async_add_external_statistics(self.hass, metadata, statistics)
+        async_add_external_statistics(self.hass, cumulative_metadata, cumulative_statistics)
         return total_usage
