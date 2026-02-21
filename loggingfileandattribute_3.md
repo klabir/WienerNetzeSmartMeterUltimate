@@ -31,9 +31,13 @@ This document specifies the exact logging changes that were implemented so anoth
         - `/tmp/wnsm_api_calls`
     - Before first write for a client session, the logging root contents are fully cleaned:
       - all files/subfolders under the selected root are removed
+      - cleanup is strict: if any item cannot be deleted, that root candidate is rejected
+        and the next fallback root is tried
     - On Smartmeter initialization (if toggle is enabled), directory preparation is attempted
       immediately and failures are captured for visibility.
     - Failed API responses (HTTP 4xx/5xx) are logged as well before exceptions are raised
+    - Request-level failures (e.g. timeout/socket `RequestException`) are also logged
+      as entries with `response_status = null` and exception text in `response_body`
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
@@ -171,13 +175,14 @@ New fields:
          - `/homeassistant/tmp/wnsm_api_calls`
          - `/config/tmp/wnsm_api_calls`
          - `/tmp/wnsm_api_calls`
-       - for each candidate:
-         - ensure directory exists
-         - write/delete a temporary probe file to verify write access
-         - delete all files/subfolders inside that candidate root
-         - create scope dir `<candidate>/<sanitized_log_scope>`
-         - set `self._raw_api_response_root` and `self._raw_api_response_dir`
-         - mark prepared `True` and return
+        - for each candidate:
+          - ensure directory exists
+          - write/delete a temporary probe file to verify write access
+          - delete all files/subfolders inside that candidate root
+          - verify root is empty after cleanup; otherwise fail this candidate
+          - create scope dir `<candidate>/<sanitized_log_scope>`
+          - set `self._raw_api_response_root` and `self._raw_api_response_dir`
+          - mark prepared `True` and return
        - if all candidates fail:
          - keep prepared `False`
          - keep root/dir `None`
@@ -226,6 +231,8 @@ Updated flow:
    - request exceptions
    - `429/500/502/503/504`
    - first `401/403` can trigger gateway key refresh + retry
+   - each request exception attempt is recorded via `_record_api_call(...)`
+     before retry/raise
 6. Apply centralized status handling:
    - 401/403 -> `SmartmeterLoginError`
    - other 4xx/5xx -> `SmartmeterConnectionError`
@@ -272,6 +279,9 @@ When enabled, each JSON file contains:
 - `request_body`
 - `response_status`
 - `response_body`
+  - for request exceptions:
+    - `response_status` is `null`
+    - `response_body` starts with `RequestException: ...`
 
 Target directory:
 
@@ -297,10 +307,11 @@ Target directory:
    - optional file writer
    - scope-aware base log directory
    - writable-root fallback + startup probe
+   - strict root cleanup validation (no silent delete failures)
    - explicit logging status/error surface (`get_raw_api_logging_status`)
    - per-zaehlpunkt log subfolders
    - one-time cleanup of the entire logging root contents before first write
-   - `_call_api` record hook
+   - `_call_api` record hook including request-exception attempts
 6. Ensure sensitive headers are redacted in persisted payload.
 7. Add GET-only retry/backoff in `_call_api` while keeping exception mapping intact.
 8. Keep existing API auth and statistics logic unchanged except wiring/logging additions.
