@@ -69,8 +69,8 @@ class Smartmeter:
         self._raw_api_response_root = None
         self._raw_api_response_dir = None
         self._raw_api_response_root_candidates = [
-            "/homeassistant/tmp/wnsm_api_calls",
             "/config/tmp/wnsm_api_calls",
+            "/homeassistant/tmp/wnsm_api_calls",
             "/tmp/wnsm_api_calls",
         ]
         self._raw_api_log_prepared = False
@@ -392,6 +392,7 @@ class Smartmeter:
         if self._raw_api_log_prepared:
             return
         self._raw_api_log_prepare_error = None
+        writable_roots: list[str] = []
         for root in self._raw_api_response_root_candidates:
             try:
                 os.makedirs(root, exist_ok=True)
@@ -399,28 +400,47 @@ class Smartmeter:
                 with open(probe_file, "w", encoding="utf-8") as handle:
                     handle.write("ok")
                 os.remove(probe_file)
+                writable_roots.append(root)
+            except Exception as exception:  # pylint: disable=broad-except
+                self._raw_api_log_prepare_error = f"{root}: {exception}"
 
+        if not writable_roots:
+            self._raw_api_log_prepared = False
+            self._raw_api_response_root = None
+            self._raw_api_response_dir = None
+            logger.error(
+                "Raw API response logging is enabled but no writable directory is available. Last error: %s",
+                self._raw_api_log_prepare_error,
+            )
+            return
+
+        for root in writable_roots:
+            try:
                 for name in os.listdir(root):
                     path = os.path.join(root, name)
                     if os.path.isdir(path):
                         shutil.rmtree(path)
                     else:
                         os.remove(path)
-
                 leftovers = os.listdir(root)
                 if leftovers:
                     raise OSError(
                         f"Cleanup of '{root}' incomplete, remaining entries: {leftovers}"
                     )
-
-                self._raw_api_response_root = root
-                self._raw_api_response_dir = os.path.join(root, self._raw_api_scope)
-                os.makedirs(self._raw_api_response_dir, exist_ok=True)
-                self._raw_api_log_prepared = True
-                self._raw_api_log_prepare_error = None
-                return
             except Exception as exception:  # pylint: disable=broad-except
                 self._raw_api_log_prepare_error = f"{root}: {exception}"
+                logger.warning("Raw API cleanup failed for '%s': %s", root, exception)
+
+        selected_root = writable_roots[0]
+        try:
+            self._raw_api_response_root = selected_root
+            self._raw_api_response_dir = os.path.join(selected_root, self._raw_api_scope)
+            os.makedirs(self._raw_api_response_dir, exist_ok=True)
+            self._raw_api_log_prepared = True
+            self._raw_api_log_prepare_error = None
+            return
+        except Exception as exception:  # pylint: disable=broad-except
+            self._raw_api_log_prepare_error = f"{selected_root}: {exception}"
 
         self._raw_api_log_prepared = False
         self._raw_api_response_root = None
