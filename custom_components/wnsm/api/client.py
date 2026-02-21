@@ -403,12 +403,15 @@ class Smartmeter:
                 for name in os.listdir(root):
                     path = os.path.join(root, name)
                     if os.path.isdir(path):
-                        shutil.rmtree(path, ignore_errors=True)
+                        shutil.rmtree(path)
                     else:
-                        try:
-                            os.remove(path)
-                        except OSError:
-                            pass
+                        os.remove(path)
+
+                leftovers = os.listdir(root)
+                if leftovers:
+                    raise OSError(
+                        f"Cleanup of '{root}' incomplete, remaining entries: {leftovers}"
+                    )
 
                 self._raw_api_response_root = root
                 self._raw_api_response_dir = os.path.join(root, self._raw_api_scope)
@@ -581,6 +584,16 @@ class Smartmeter:
                     method, url, headers=headers, json=data, timeout=timeout
                 )
             except requests.RequestException as exception:
+                self._record_api_call(
+                    method=method,
+                    endpoint=endpoint,
+                    url=url,
+                    query=query,
+                    request_body=data,
+                    request_headers=headers,
+                    response_status=None,
+                    response_body=f"RequestException: {exception}",
+                )
                 if can_retry and attempt < max_attempts:
                     time.sleep(random.uniform(0.05, 0.2) * attempt)
                     continue
