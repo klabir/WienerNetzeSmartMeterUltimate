@@ -4,6 +4,7 @@ from asyncio import Future
 from datetime import datetime
 
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .api import Smartmeter
 from .api.constants import ValueType
@@ -145,8 +146,49 @@ class AsyncSmartmeter:
             "values": values,
         }
 
-    async def get_meter_reading_from_historic_data(self, zaehlpunkt: str, start_date: datetime, end_date: datetime) -> float:
-        """Return daily meter readings from the given start date until today"""
+    async def get_meter_reading_from_historic_data(
+        self,
+        zaehlpunkt: str,
+        start_date: datetime = None,
+        end_date: datetime = None,
+    ) -> float | None:
+        """Return latest meter reading from historical METER_READ values."""
+        meter_readings = await self.get_meter_reading_history_from_historic_data(
+            zaehlpunkt,
+            start_date,
+            end_date,
+        )
+        values = meter_readings.get("values")
+        if not isinstance(values, list) or len(values) == 0:
+            return None
+
+        latest_row = None
+        latest_ts = None
+        for messwert in values:
+            if "messwert" not in messwert or messwert["messwert"] is None:
+                continue
+            ts = dt_util.parse_datetime(
+                messwert.get("zeitBis") or messwert.get("zeitVon")
+            )
+            if ts is None:
+                if latest_row is None:
+                    latest_row = messwert
+                continue
+            if latest_ts is None or ts > latest_ts:
+                latest_ts = ts
+                latest_row = messwert
+
+        if latest_row is None:
+            return None
+        return latest_row["messwert"] / 1000
+
+    async def get_meter_reading_history_from_historic_data(
+        self,
+        zaehlpunkt: str,
+        start_date: datetime = None,
+        end_date: datetime = None,
+    ) -> dict[str, any]:
+        """Return historical meter reading values (`wertetyp=METER_READ`)."""
         response = await self.hass.async_add_executor_job(
             self.smartmeter.historical_data,
             zaehlpunkt,
@@ -157,9 +199,7 @@ class AsyncSmartmeter:
         if "Exception" in response:
             raise RuntimeError(f"Cannot access historic data: {response}")
         _LOGGER.debug(f"Raw historical data: {response}")
-        meter_readings = translate_dict(response, ATTRS_HISTORIC_DATA)
-        if "values" in meter_readings and all("messwert" in messwert for messwert in meter_readings['values']) and len(meter_readings['values']) > 0:
-            return meter_readings['values'][0]['messwert'] / 1000
+        return translate_dict(response, ATTRS_HISTORIC_DATA)
 
     @staticmethod
     def is_active(zaehlpunkt_response: dict) -> bool:

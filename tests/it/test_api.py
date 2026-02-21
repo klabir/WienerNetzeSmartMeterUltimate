@@ -277,6 +277,26 @@ def test_history_with_zp(requests_mock: Mocker):
     assert 1 == len(hist['messwerte'])
     assert 'WH' == hist['einheit']
     assert '1-1:1.8.0' == hist['obisCode']
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_history_meter_read_query_type(requests_mock: Mocker):
+    z = zaehlpunkt_response([enabled(zaehlpunkt())])[0]
+    zp = z["zaehlpunkte"][0]["zaehlpunktnummer"]
+    customer_id = z["geschaeftspartner"]
+    expect_login(requests_mock)
+    expect_history(requests_mock, customer_id, zp)
+    expect_zaehlpunkte(requests_mock, [enabled(zaehlpunkt())])
+
+    hist = smartmeter().login().historical_data(
+        zp,
+        dt.date(2026, 2, 20),
+        dt.date(2026, 2, 21),
+        const.ValueType.METER_READ,
+    )
+
+    assert 1 == len(hist["messwerte"])
+    assert requests_mock.request_history[-1].qs["wertetyp"][0].upper() == "METER_READ"
     
 @pytest.mark.usefixtures("requests_mock")
 def test_history_wrong_zp(requests_mock: Mocker, caplog):

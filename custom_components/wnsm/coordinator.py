@@ -12,7 +12,7 @@ from .AsyncSmartmeter import AsyncSmartmeter
 from .api import Smartmeter
 from .api.constants import ValueType
 from .importer import Importer
-from .utils import before, today
+from .utils import today
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,15 +144,13 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                 attributes.update(zaehlpunkt_response)
 
                 if self._async_smartmeter.is_active(zaehlpunkt_response):
-                    reading_dates = [before(today(), 1), before(today(), 2)]
-                    for reading_date in reading_dates:
-                        meter_reading = await self._async_smartmeter.get_meter_reading_from_historic_data(
-                            zaehlpunkt,
-                            reading_date,
-                            datetime.now(),
-                        )
-                        if meter_reading is not None:
-                            native_value = meter_reading
+                    meter_reading = await self._async_smartmeter.get_meter_reading_from_historic_data(
+                        zaehlpunkt,
+                        None,
+                        None,
+                    )
+                    if meter_reading is not None:
+                        native_value = meter_reading
                     importer = Importer(
                         self.hass,
                         self._async_smartmeter,
