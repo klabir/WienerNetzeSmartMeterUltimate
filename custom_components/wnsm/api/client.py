@@ -17,6 +17,7 @@ import copy
 import re
 import random
 import time
+import uuid
 
 from . import constants as const
 from .errors import (
@@ -64,14 +65,21 @@ class Smartmeter:
         self._code_challenge = None
         self._local_login_args = None
         self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
-        self._raw_api_response_root = "/homeassistant/tmp/wnsm_api_calls"
-        self._raw_api_response_dir = os.path.join(
-            self._raw_api_response_root,
-            self._sanitize_filename(log_scope),
-        )
+        self._raw_api_scope = self._sanitize_filename(log_scope) or "default"
+        self._raw_api_response_root = None
+        self._raw_api_response_dir = None
+        self._raw_api_response_root_candidates = [
+            "/homeassistant/tmp/wnsm_api_calls",
+            "/config/tmp/wnsm_api_calls",
+            "/tmp/wnsm_api_calls",
+        ]
         self._raw_api_log_prepared = False
+        self._raw_api_log_prepare_error = None
+        self._raw_api_last_write_error = None
         self._recent_api_calls = []
         self._max_recent_api_calls = 20
+        if self._enable_raw_api_response_write:
+            self._prepare_raw_api_response_dir()
 
     def reset(self):
         self.session = requests.Session()
@@ -85,6 +93,8 @@ class Smartmeter:
         self._code_challenge = None
         self._local_login_args = None
         self._raw_api_log_prepared = False
+        self._raw_api_log_prepare_error = None
+        self._raw_api_last_write_error = None
         self._recent_api_calls = []
 
     def is_login_expired(self):
@@ -346,8 +356,12 @@ class Smartmeter:
     def _write_raw_api_response(self, payload: dict, endpoint: str, method: str) -> str | None:
         if not self._enable_raw_api_response_write:
             return None
+        self._raw_api_last_write_error = None
         try:
             self._prepare_raw_api_response_dir()
+            if not self._raw_api_log_prepared or self._raw_api_response_dir is None:
+                self._raw_api_last_write_error = self._raw_api_log_prepare_error or "Raw API log directory is not available."
+                return None
             zaehlpunkt = self._extract_zaehlpunkt_for_log(
                 endpoint,
                 payload.get("query"),
@@ -366,23 +380,52 @@ class Smartmeter:
                 json.dump(payload, handle, indent=2, ensure_ascii=False)
             return path
         except Exception as exception:  # pylint: disable=broad-except
-            logger.warning("Could not write raw API response file: %s", exception)
+            self._raw_api_last_write_error = str(exception)
+            logger.warning(
+                "Could not write raw API response file for endpoint '%s': %s",
+                endpoint,
+                exception,
+            )
             return None
 
     def _prepare_raw_api_response_dir(self) -> None:
         if self._raw_api_log_prepared:
             return
-        os.makedirs(self._raw_api_response_root, exist_ok=True)
-        for name in os.listdir(self._raw_api_response_root):
-            path = os.path.join(self._raw_api_response_root, name)
-            if os.path.isdir(path):
-                shutil.rmtree(path, ignore_errors=True)
-            else:
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-        self._raw_api_log_prepared = True
+        self._raw_api_log_prepare_error = None
+        for root in self._raw_api_response_root_candidates:
+            try:
+                os.makedirs(root, exist_ok=True)
+                probe_file = os.path.join(root, f".probe_{uuid.uuid4().hex}")
+                with open(probe_file, "w", encoding="utf-8") as handle:
+                    handle.write("ok")
+                os.remove(probe_file)
+
+                for name in os.listdir(root):
+                    path = os.path.join(root, name)
+                    if os.path.isdir(path):
+                        shutil.rmtree(path, ignore_errors=True)
+                    else:
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+
+                self._raw_api_response_root = root
+                self._raw_api_response_dir = os.path.join(root, self._raw_api_scope)
+                os.makedirs(self._raw_api_response_dir, exist_ok=True)
+                self._raw_api_log_prepared = True
+                self._raw_api_log_prepare_error = None
+                return
+            except Exception as exception:  # pylint: disable=broad-except
+                self._raw_api_log_prepare_error = f"{root}: {exception}"
+
+        self._raw_api_log_prepared = False
+        self._raw_api_response_root = None
+        self._raw_api_response_dir = None
+        logger.error(
+            "Raw API response logging is enabled but no writable directory is available. Last error: %s",
+            self._raw_api_log_prepare_error,
+        )
 
     @staticmethod
     def _extract_zaehlpunkt_for_log(
@@ -442,6 +485,16 @@ class Smartmeter:
 
     def get_recent_api_calls(self) -> list[dict]:
         return list(self._recent_api_calls)
+
+    def get_raw_api_logging_status(self) -> dict:
+        return {
+            "enabled": self._enable_raw_api_response_write,
+            "prepared": self._raw_api_log_prepared,
+            "root": self._raw_api_response_root,
+            "directory": self._raw_api_response_dir,
+            "prepare_error": self._raw_api_log_prepare_error,
+            "last_write_error": self._raw_api_last_write_error,
+        }
 
     def _get_api_key(self, token):
         self._access_valid_or_raise()

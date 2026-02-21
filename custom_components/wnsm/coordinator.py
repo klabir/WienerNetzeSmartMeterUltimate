@@ -46,6 +46,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
 
     def _inject_api_log_attributes(self, zaehlpunkt: str, attributes: dict[str, Any]) -> None:
         recent_calls = self._smartmeter.get_recent_api_calls()
+        logging_status = self._smartmeter.get_raw_api_logging_status()
         filtered_calls = [
             call
             for call in recent_calls
@@ -59,6 +60,11 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         attributes["last_api_call_file"] = (
             filtered_calls[-1].get("file_path") if len(filtered_calls) > 0 else None
         )
+        attributes["raw_api_logging_prepared"] = logging_status["prepared"]
+        attributes["raw_api_logging_root"] = logging_status["root"]
+        attributes["raw_api_logging_directory"] = logging_status["directory"]
+        attributes["raw_api_logging_prepare_error"] = logging_status["prepare_error"]
+        attributes["raw_api_last_write_error"] = logging_status["last_write_error"]
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:

@@ -23,11 +23,17 @@ This document specifies the exact logging changes that were implemented so anoth
      - fallback `config_entry.data["enable_raw_api_response_write"]`
      - fallback `False`
 2. If enabled:
-   - Each API call made via `Smartmeter._call_api()` is written to:
-     - `/homeassistant/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/*.json`
-   - Before first write for a client session, the logging root contents are fully cleaned:
-     - `/homeassistant/tmp/wnsm_api_calls` (all nested subfolders/files removed)
-   - Failed API responses (HTTP 4xx/5xx) are logged as well before exceptions are raised
+    - Each API call made via `Smartmeter._call_api()` is written to:
+      - `<selected_root>/<entry_id>/<zaehlpunkt>/*.json`
+      - where `<selected_root>` is the first writable candidate:
+        - `/homeassistant/tmp/wnsm_api_calls`
+        - `/config/tmp/wnsm_api_calls`
+        - `/tmp/wnsm_api_calls`
+    - Before first write for a client session, the logging root contents are fully cleaned:
+      - all files/subfolders under the selected root are removed
+    - On Smartmeter initialization (if toggle is enabled), directory preparation is attempted
+      immediately and failures are captured for visibility.
+    - Failed API responses (HTTP 4xx/5xx) are logged as well before exceptions are raised
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
@@ -87,6 +93,11 @@ For YAML setup path, creates coordinator with:
   - `api_call_count`
   - `recent_api_calls` (max 5)
   - `last_api_call_file`
+  - `raw_api_logging_prepared`
+  - `raw_api_logging_root`
+  - `raw_api_logging_directory`
+  - `raw_api_logging_prepare_error`
+  - `raw_api_last_write_error`
 
 ## 3) `custom_components/wnsm/wnsm_sensor.py`
 
@@ -118,15 +129,22 @@ Added arg:
 New fields:
 
 - `self._enable_raw_api_response_write`
-- `self._raw_api_response_root = "/homeassistant/tmp/wnsm_api_calls"`
-- `self._raw_api_response_dir = "/homeassistant/tmp/wnsm_api_calls/<sanitized_log_scope>"`
+- `self._raw_api_scope = <sanitized_log_scope or "default">`
+- `self._raw_api_response_root = None` (set after successful prepare)
+- `self._raw_api_response_dir = None` (set after successful prepare)
+- `self._raw_api_response_root_candidates = ["/homeassistant/tmp/wnsm_api_calls", "/config/tmp/wnsm_api_calls", "/tmp/wnsm_api_calls"]`
 - `self._raw_api_log_prepared = False`
+- `self._raw_api_log_prepare_error = None`
+- `self._raw_api_last_write_error = None`
 - `self._recent_api_calls = []`
 - `self._max_recent_api_calls = 20`
+- if `enable_raw_api_response_write=True`, call `_prepare_raw_api_response_dir()` immediately
 
 ### `reset()` update
 
 - Resets `self._raw_api_log_prepared = False`
+- Resets `self._raw_api_log_prepare_error = None`
+- Resets `self._raw_api_last_write_error = None`
 - Resets `self._recent_api_calls = []`
 
 ### New helper methods
@@ -142,16 +160,29 @@ New fields:
    - Calls directory preparation once per session via `_prepare_raw_api_response_dir()`.
    - Resolves target meter via `_extract_zaehlpunkt_for_log(endpoint, query, request_body)`.
    - Writes into per-meter subfolder:
-     - `/config/tmp/wnsm_api_calls/<sanitized_log_scope>/<sanitized_zaehlpunkt>/`
+      - `<selected_root>/<sanitized_log_scope>/<sanitized_zaehlpunkt>/`
    - Writes pretty JSON file:
       - filename format: `{timestamp}_{method}_{sanitized_endpoint}.json`
    - Returns file path or `None`
 4. `_prepare_raw_api_response_dir()`
-   - If already prepared in current session: no-op
-   - Else:
-      - ensure `/homeassistant/tmp/wnsm_api_calls` exists
-      - delete all files/subfolders inside `/homeassistant/tmp/wnsm_api_calls`
-      - mark prepared flag `True`
+    - If already prepared in current session: no-op
+    - Else:
+       - iterate fallback roots in this exact order:
+         - `/homeassistant/tmp/wnsm_api_calls`
+         - `/config/tmp/wnsm_api_calls`
+         - `/tmp/wnsm_api_calls`
+       - for each candidate:
+         - ensure directory exists
+         - write/delete a temporary probe file to verify write access
+         - delete all files/subfolders inside that candidate root
+         - create scope dir `<candidate>/<sanitized_log_scope>`
+         - set `self._raw_api_response_root` and `self._raw_api_response_dir`
+         - mark prepared `True` and return
+       - if all candidates fail:
+         - keep prepared `False`
+         - keep root/dir `None`
+         - store `self._raw_api_log_prepare_error` (last error)
+         - log error
 5. `_extract_zaehlpunkt_for_log(endpoint, query, request_body) -> str`
    - Priority:
      1. `query["zaehlpunkt"]` if present
@@ -171,7 +202,15 @@ New fields:
    - Pushes summary to `_recent_api_calls`
    - Keeps only newest 20 entries
 7. `get_recent_api_calls() -> list[dict]`
-   - Returns shallow copy of in-memory summaries
+    - Returns shallow copy of in-memory summaries
+8. `get_raw_api_logging_status() -> dict`
+   - Returns:
+      - `enabled`
+      - `prepared`
+      - `root`
+      - `directory`
+      - `prepare_error`
+      - `last_write_error`
 
 ### `_call_api(...)` logging integration
 
@@ -205,6 +244,11 @@ After each successful update, sensor attributes include:
 - `api_call_count`: int
 - `recent_api_calls`: list of summaries (max 5 shown)
 - `last_api_call_file`: string path or `None`
+- `raw_api_logging_prepared`: bool
+- `raw_api_logging_root`: string path or `None`
+- `raw_api_logging_directory`: string path or `None`
+- `raw_api_logging_prepare_error`: string or `None`
+- `raw_api_last_write_error`: string or `None`
 
 Each `recent_api_calls` item has:
 
@@ -231,13 +275,16 @@ When enabled, each JSON file contains:
 
 Target directory:
 
-- `/homeassistant/tmp/wnsm_api_calls`
+- root is first writable of:
+  - `/homeassistant/tmp/wnsm_api_calls`
+  - `/config/tmp/wnsm_api_calls`
+  - `/tmp/wnsm_api_calls`
 - subfolder per entry scope:
-  - `/homeassistant/tmp/wnsm_api_calls/<entry_id>/`
+  - `<root>/<entry_id>/`
 - subfolder per meter:
-  - `/homeassistant/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/`
+  - `<root>/<entry_id>/<zaehlpunkt>/`
 - fallback subfolder when no meter is detectable:
-  - `/homeassistant/tmp/wnsm_api_calls/<entry_id>/general/`
+  - `<root>/<entry_id>/general/`
 
 ## Rebuild checklist
 
@@ -249,6 +296,8 @@ Target directory:
    - in-memory recent call store
    - optional file writer
    - scope-aware base log directory
+   - writable-root fallback + startup probe
+   - explicit logging status/error surface (`get_raw_api_logging_status`)
    - per-zaehlpunkt log subfolders
    - one-time cleanup of the entire logging root contents before first write
    - `_call_api` record hook
@@ -259,4 +308,4 @@ Target directory:
 ## Verification performed
 
 - Syntax compile passed:
-  - `python -m py_compile custom_components/wnsm/api/client.py custom_components/wnsm/sensor.py custom_components/wnsm/wnsm_sensor.py`
+  - `python -m py_compile custom_components/wnsm/api/client.py custom_components/wnsm/coordinator.py`
