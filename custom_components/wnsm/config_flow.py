@@ -59,7 +59,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Get options flow for this handler."""
-        return WienerNetzeSmartMeterOptionsFlow(config_entry)
+        return WienerNetzeSmartMeterOptionsFlow()
 
     async def validate_auth(self, username: str, password: str) -> list[dict]:
         """
@@ -112,12 +112,9 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
 class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
     """Options flow for Wiener Netze Smartmeter."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry):
-        self.config_entry = config_entry
-
     def _get_config_entry(self):
         """Get config entry with legacy fallback."""
-        if self.config_entry is not None:
+        if getattr(self, "config_entry", None) is not None:
             return self.config_entry
         return self.hass.config_entries.async_get_entry(self.handler)
 
