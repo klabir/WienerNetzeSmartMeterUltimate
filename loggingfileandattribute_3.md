@@ -7,6 +7,7 @@ This document specifies the exact logging changes that were implemented so anoth
 - Modified files:
   - `custom_components/wnsm/api/client.py`
   - `custom_components/wnsm/sensor.py`
+  - `custom_components/wnsm/coordinator.py`
   - `custom_components/wnsm/wnsm_sensor.py`
 - Uses existing config-flow option:
   - `enable_raw_api_response_write`
@@ -23,9 +24,9 @@ This document specifies the exact logging changes that were implemented so anoth
      - fallback `False`
 2. If enabled:
    - Each API call made via `Smartmeter._call_api()` is written to:
-     - `/config/tmp/wnsm_api_calls/<zaehlpunkt>/*.json`
-   - Before the first write of a logging session, the root logging directory is fully cleaned:
-     - `/config/tmp/wnsm_api_calls` including all nested subfolders/files
+     - `/config/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/*.json`
+   - Before first write for a client session, that entry-specific directory is fully cleaned:
+     - `/config/tmp/wnsm_api_calls/<entry_id>` including all nested subfolders/files
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
@@ -42,71 +43,77 @@ This document specifies the exact logging changes that were implemented so anoth
 
 Added resolution logic:
 
-- `enable_raw_api_response_write = config_entry.options.get(CONF_ENABLE_RAW_API_RESPONSE_WRITE, config.get(CONF_ENABLE_RAW_API_RESPONSE_WRITE, False))`
+- `enable_raw_api_response_write = options->data->False`
+- `scan_interval = options->data->360`
 
-Passed toggle into each sensor:
+Creates one shared coordinator:
 
-- `WNSMSensor(..., enable_raw_api_response_write=enable_raw_api_response_write)`
+- `WNSMDataUpdateCoordinator(...)`
+  - `enable_raw_api_response_write=...`
+  - `scan_interval_minutes=...`
+  - `log_scope=config_entry.entry_id`
+
+Sensors now receive coordinator + zaehlpunkt, not username/password.
 
 ### `async_setup_platform(...)`
 
-For YAML setup path, explicitly passes:
+For YAML setup path, creates coordinator with:
 
 - `enable_raw_api_response_write=False`
+- `log_scope="yaml"`
 
-## 2) `custom_components/wnsm/wnsm_sensor.py`
+## 2) `custom_components/wnsm/coordinator.py`
+
+### New file: shared polling and logging source
+
+- Class: `WNSMDataUpdateCoordinator(DataUpdateCoordinator)`
+- Holds one shared:
+  - `Smartmeter`
+  - `AsyncSmartmeter`
+- Poll interval is driven by config-flow `scan_interval`.
+- Login happens once per cycle for the shared client.
+- Loops all configured zaehlpunkte and stores per-zp state in `coordinator.data`.
+- Imports statistics via existing `Importer` per zaehlpunkt.
+
+### Logging attributes assembled in coordinator
+
+- `_inject_api_log_attributes(zaehlpunkt, attributes)` filters recent API calls for that zaehlpunkt and writes:
+  - `raw_api_logging_enabled`
+  - `api_call_count`
+  - `recent_api_calls` (max 5)
+  - `last_api_call_file`
+
+## 3) `custom_components/wnsm/wnsm_sensor.py`
 
 ### Constructor signature changed
 
-From:
+From constructor-per-sensor auth model to coordinator model:
 
-- `__init__(self, username, password, zaehlpunkt)`
-
-To:
-
-- `__init__(self, username, password, zaehlpunkt, enable_raw_api_response_write: bool = False)`
-
-Stores:
-
-- `self.enable_raw_api_response_write`
-
-### New helper method
-
-- `_inject_api_log_attributes(self, smartmeter: Smartmeter)`
-
-It reads:
-
-- `recent_calls = smartmeter.get_recent_api_calls()`
-
-And sets/overlays attributes:
-
-- `raw_api_logging_enabled` (bool)
-- `api_call_count` (int)
-- `recent_api_calls` (last 5 summaries)
-- `last_api_call_file` (path of latest file or `None`)
+- `__init__(self, coordinator, zaehlpunkt)`
+- Subclasses `CoordinatorEntity`.
+- No per-entity Smartmeter creation.
 
 ### `async_update(...)` wiring
 
-Smartmeter creation changed to:
+State now comes from `coordinator.data[zaehlpunkt]`:
 
-- `Smartmeter(..., enable_raw_api_response_write=self.enable_raw_api_response_write)`
+- `native_value`
+- `extra_state_attributes`
+- `available`
 
-After update flow (and importer call), inject logging attrs:
-
-- `self._inject_api_log_attributes(smartmeter)`
-
-## 3) `custom_components/wnsm/api/client.py`
+## 4) `custom_components/wnsm/api/client.py`
 
 ### `Smartmeter.__init__(...)` extended
 
 Added arg:
 
 - `enable_raw_api_response_write: bool = False`
+- `log_scope: str = "default"`
 
 New fields:
 
 - `self._enable_raw_api_response_write`
-- `self._raw_api_response_dir = "/config/tmp/wnsm_api_calls"`
+- `self._raw_api_response_dir = "/config/tmp/wnsm_api_calls/<sanitized_log_scope>"`
 - `self._raw_api_log_prepared = False`
 - `self._recent_api_calls = []`
 - `self._max_recent_api_calls = 20`
@@ -136,8 +143,8 @@ New fields:
 4. `_prepare_raw_api_response_dir()`
    - If already prepared in current session: no-op
    - Else:
-     - delete `/config/tmp/wnsm_api_calls` recursively (including subdirs/files)
-     - recreate `/config/tmp/wnsm_api_calls`
+      - delete `/config/tmp/wnsm_api_calls/<log_scope>` recursively (including subdirs/files)
+      - recreate `/config/tmp/wnsm_api_calls/<log_scope>`
      - mark prepared flag `True`
 5. `_extract_zaehlpunkt_for_log(endpoint, query, request_body) -> str`
    - Priority:
@@ -211,23 +218,28 @@ When enabled, each JSON file contains:
 Target directory:
 
 - `/config/tmp/wnsm_api_calls`
+- subfolder per entry scope:
+  - `/config/tmp/wnsm_api_calls/<entry_id>/`
 - subfolder per meter:
-  - `/config/tmp/wnsm_api_calls/<zaehlpunkt>/`
+  - `/config/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/`
 - fallback subfolder when no meter is detectable:
-  - `/config/tmp/wnsm_api_calls/general/`
+  - `/config/tmp/wnsm_api_calls/<entry_id>/general/`
 
 ## Rebuild checklist
 
 1. Add toggle propagation in `sensor.py` from options/data/default.
-2. Extend `WNSMSensor` to accept toggle and expose logging attributes.
-3. Extend `Smartmeter` with:
+2. Build one shared coordinator per entry and pass `log_scope=entry_id`.
+3. Move per-zp logging attribute assembly into coordinator update data.
+4. Keep sensors as coordinator-backed readers.
+5. Extend `Smartmeter` with:
    - in-memory recent call store
    - optional file writer
+   - scope-aware base log directory
    - per-zaehlpunkt log subfolders
-   - one-time recursive cleanup of logging root before first write
+   - one-time recursive cleanup of scope directory before first write
    - `_call_api` record hook
-4. Ensure sensitive headers are redacted in persisted payload.
-5. Keep existing API auth and sensor/statistics logic unchanged except wiring/logging additions.
+6. Ensure sensitive headers are redacted in persisted payload.
+7. Keep existing API auth and statistics logic unchanged except wiring/logging additions.
 
 ## Verification performed
 

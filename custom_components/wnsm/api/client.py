@@ -35,6 +35,7 @@ class Smartmeter:
         password,
         input_code_verifier=None,
         enable_raw_api_response_write: bool = False,
+        log_scope: str = "default",
     ):
         """Access the Smartmeter API.
 
@@ -60,7 +61,10 @@ class Smartmeter:
         self._code_challenge = None
         self._local_login_args = None
         self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
-        self._raw_api_response_dir = "/config/tmp/wnsm_api_calls"
+        self._raw_api_response_dir = os.path.join(
+            "/config/tmp/wnsm_api_calls",
+            self._sanitize_filename(log_scope),
+        )
         self._raw_api_log_prepared = False
         self._recent_api_calls = []
         self._max_recent_api_calls = 20

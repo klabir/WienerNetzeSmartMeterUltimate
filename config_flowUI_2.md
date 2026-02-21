@@ -7,9 +7,9 @@ This document captures the exact **config-flow UI changes** that were implemente
 - Changed files:
   - `custom_components/wnsm/config_flow.py`
   - `custom_components/wnsm/translations/en.json`
-- Explicitly **not** implemented:
-  - No runtime/local-folder API logging toggle wiring
-  - No sensor/statistics/importer behavior changes
+- Runtime consumers (implemented later, but required for first-time-correct integration behavior):
+  - `custom_components/wnsm/sensor.py`
+  - `custom_components/wnsm/coordinator.py`
 
 ## Goal
 
@@ -18,6 +18,9 @@ Implement all config-flow UI changes from `auth_confflow.md`:
 1. Add user-step fields for scan interval and raw API write toggle.
 2. Add options flow with reload-on-save.
 3. Add translation strings for both user and options forms.
+4. Ensure the UI fields are actually consumed at runtime:
+   - `scan_interval` controls polling interval
+   - `enable_raw_api_response_write` is resolved options->data->default
 
 ## `config_flow.py` changes
 
@@ -108,6 +111,23 @@ Added top-level `options.step.init`:
    - parsed `custom_components/wnsm/translations/en.json` successfully
 3. HA options-flow runtime compatibility fix applied:
    - avoids 500 errors caused by deprecated manual `config_entry` handling in options flow constructors
+4. Runtime consumer alignment:
+   - `scan_interval` is used by coordinator update interval
+   - `enable_raw_api_response_write` is forwarded into shared Smartmeter client
+
+## Runtime contract (must exist for first-time-right implementation)
+
+These are outside `config_flow.py` but must be implemented to avoid "UI saves but has no effect":
+
+1. In `sensor.py` entry setup:
+   - resolve:
+     - `scan_interval = options.get("scan_interval", data.get("scan_interval", 360))`
+     - `enable_raw_api_response_write = options.get(..., data.get(..., False))`
+2. Create one shared coordinator per config entry with:
+   - `scan_interval_minutes=scan_interval`
+   - `enable_raw_api_response_write=...`
+   - `log_scope=config_entry.entry_id`
+3. Build sensors from coordinator data (`zaehlpunkt` list), not by creating one Smartmeter per sensor.
 
 ## Rebuild checklist for another LLM
 
@@ -120,4 +140,6 @@ Added top-level `options.step.init`:
 7. In `async_get_options_flow`, return `WienerNetzeSmartMeterOptionsFlow()` (no args).
 8. Do not inject `config_entry` in `OptionsFlow.__init__`; use built-in `self.config_entry`.
 9. Add all translation keys for new user + options fields.
-10. Do **not** implement any runtime local-file logging logic yet.
+10. Wire both UI options into runtime consumer code:
+   - `scan_interval` must control polling interval
+   - `enable_raw_api_response_write` must be passed to API client/coordinator

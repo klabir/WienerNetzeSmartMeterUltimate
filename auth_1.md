@@ -1,12 +1,11 @@
-# WNSM Auth Patch Notes (Auth-Only Delta)
+# WNSM Auth Patch Notes (Auth + Runtime Wiring Delta)
 
-This file documents the **recent authentication-only changes** that were applied, so another LLM can rebuild the same patch precisely.
+This file documents the authentication changes and the later runtime wiring update that impacts how often/auth where login is performed.
 
 ## Scope
 
 - File changed: `custom_components/wnsm/api/client.py`
-- No config-flow UI changes
-- No sensor/statistics/logging wiring changes
+- No config-flow UI logic changes in this file
 - Existing auth flow structure remains:
   - `load_login_page()` -> `credentials_login()` -> `load_tokens()` -> `_get_api_key()`
 
@@ -15,6 +14,7 @@ This file documents the **recent authentication-only changes** that were applied
 1. Keep the existing OIDC/PKCE login chain behavior.
 2. Improve robustness around HTML form extraction and token validation.
 3. Preserve error semantics with `SmartmeterConnectionError` / `SmartmeterLoginError`.
+4. Keep auth protocol unchanged while allowing shared runtime session usage.
 
 ## Exact changes
 
@@ -94,6 +94,31 @@ Net effect:
 
 - Consistent failure semantics when token state is missing/uninitialized.
 
+### 6) `Smartmeter.__init__` supports scoped runtime logging path (non-auth argument)
+
+Added ctor arg:
+
+- `log_scope: str = "default"`
+
+Behavior:
+
+- Does not change login algorithm.
+- Sets raw logging base for this client to:
+  - `/config/tmp/wnsm_api_calls/<sanitized_log_scope>/`
+
+### 7) Runtime auth call pattern changed to shared coordinator session
+
+Auth internals are unchanged, but runtime usage is now:
+
+1. One `Smartmeter` + one `AsyncSmartmeter` is created per config entry in coordinator.
+2. Coordinator calls `await async_smartmeter.login()` once per update cycle.
+3. Per-zaehlpunkt requests reuse that authenticated session/token.
+
+Net effect:
+
+- Lower login churn and fewer repeated auth handshakes.
+- Same auth protocol and same auth error semantics.
+
 ## Rebuild checklist for another LLM
 
 1. Edit only `custom_components/wnsm/api/client.py`.
@@ -105,12 +130,14 @@ Net effect:
 4. In `load_tokens()`, switch bearer validation to `tokens.get("token_type")`.
 5. In `_access_valid_or_raise()`, add early guard for missing token or expiration.
 6. Keep all existing auth messages unchanged except the bearer message now prints `None` if missing.
-7. Do not modify config flow, sensors, importer, statistics, or runtime wiring.
+7. Extend ctor with `log_scope` but keep auth sequence and token handling unchanged.
+8. Implement runtime usage with a shared coordinator-backed client per config entry.
 
 ## Post-change verification done
 
-- Syntax check passed:
+- Syntax checks passed:
   - `python -m py_compile custom_components/wnsm/api/client.py`
+  - `python -m py_compile custom_components/wnsm/coordinator.py custom_components/wnsm/sensor.py custom_components/wnsm/wnsm_sensor.py`
 
 ## Notes about test environment issue (not code behavior)
 

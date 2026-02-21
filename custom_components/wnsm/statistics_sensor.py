@@ -4,6 +4,7 @@ from warnings import deprecated
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.const import UnitOfEnergy
 
+from .coordinator import WNSMDataUpdateCoordinator
 from .wnsm_sensor import WNSMSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -12,8 +13,8 @@ _LOGGER = logging.getLogger(__name__)
 @deprecated("Remove this sensor from your configuration.")
 class StatisticsSensor(WNSMSensor, SensorEntity):
 
-    def __init__(self, username: str, password: str, zaehlpunkt: str) -> None:
-        super().__init__(username, password, zaehlpunkt)
+    def __init__(self, coordinator: WNSMDataUpdateCoordinator, zaehlpunkt: str) -> None:
+        super().__init__(coordinator, zaehlpunkt)
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
