@@ -15,6 +15,8 @@ import hashlib
 import os
 import copy
 import re
+import random
+import time
 
 from . import constants as const
 from .errors import (
@@ -147,6 +149,7 @@ class Smartmeter:
         return self._extract_first_form_action(
             result.content,
             "No form found on the login page.",
+            result.url if result is not None else login_url,
         )
 
     def credentials_login(self, url):
@@ -166,6 +169,7 @@ class Smartmeter:
             action = self._extract_first_form_action(
                 result.content,
                 "Could not login with credentials",
+                result.url if result is not None else url,
             )
 
             result = self.session.post(
@@ -315,12 +319,15 @@ class Smartmeter:
         raise SmartmeterConnectionError(message)
 
     @staticmethod
-    def _extract_first_form_action(content, no_form_error):
+    def _extract_first_form_action(content, no_form_error, base_url: str | None = None):
         tree = html.fromstring(content)
         forms = tree.xpath("(//form/@action)")
         if not forms:
             raise SmartmeterConnectionError(no_form_error)
-        return forms[0]
+        action = forms[0]
+        if base_url is not None:
+            return parse.urljoin(base_url, action)
+        return action
 
     @staticmethod
     def _sanitize_filename(value: str) -> str:
@@ -498,34 +505,83 @@ class Smartmeter:
         if data:
             headers["Content-Type"] = "application/json"
 
-        response = self.session.request(
-            method, url, headers=headers, json=data, timeout=timeout
-        )
-
+        method_u = method.upper()
+        can_retry = method_u == "GET"
+        max_attempts = 3 if can_retry else 1
+        api_key_refreshed = False
+        transient_status = {429, 500, 502, 503, 504}
+        response = None
         response_json = None
         response_text = None
-        try:
-            response_json = response.json()
-        except ValueError:
-            response_text = response.text
 
-        logger.debug(
-            "\nAPI Request: %s\n%s\n\nAPI Response: %s",
-            url,
-            "" if data is None else "body: " + json.dumps(data, indent=2),
-            json.dumps(response_json, indent=2) if response_json is not None else response_text,
-        )
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.session.request(
+                    method, url, headers=headers, json=data, timeout=timeout
+                )
+            except requests.RequestException as exception:
+                if can_retry and attempt < max_attempts:
+                    time.sleep(random.uniform(0.05, 0.2) * attempt)
+                    continue
+                raise SmartmeterConnectionError(
+                    f"API request failed for endpoint '{endpoint}': {exception}"
+                ) from exception
 
-        self._record_api_call(
-            method=method,
-            endpoint=endpoint,
-            url=url,
-            query=query,
-            request_body=data,
-            request_headers=headers,
-            response_status=response.status_code if response is not None else None,
-            response_body=response_json if response_json is not None else response_text,
-        )
+            response_json = None
+            response_text = None
+            try:
+                response_json = response.json()
+            except ValueError:
+                response_text = response.text
+
+            logger.debug(
+                "\nAPI Request: %s\n%s\n\nAPI Response: %s",
+                url,
+                "" if data is None else "body: " + json.dumps(data, indent=2),
+                json.dumps(response_json, indent=2) if response_json is not None else response_text,
+            )
+
+            self._record_api_call(
+                method=method,
+                endpoint=endpoint,
+                url=url,
+                query=query,
+                request_body=data,
+                request_headers=headers,
+                response_status=response.status_code if response is not None else None,
+                response_body=response_json if response_json is not None else response_text,
+            )
+
+            if (
+                response.status_code in (401, 403)
+                and not api_key_refreshed
+                and can_retry
+                and attempt < max_attempts
+            ):
+                try:
+                    self._api_gateway_token, self._api_gateway_b2b_token = self._get_api_key(
+                        self._access_token
+                    )
+                    api_key_refreshed = True
+                    if base_url == const.API_URL:
+                        headers["X-Gateway-APIKey"] = self._api_gateway_token
+                    elif base_url == const.API_URL_B2B:
+                        headers["X-Gateway-APIKey"] = self._api_gateway_b2b_token
+                    time.sleep(random.uniform(0.05, 0.2) * attempt)
+                    continue
+                except SmartmeterError:
+                    pass
+
+            if (
+                can_retry
+                and response.status_code in transient_status
+                and attempt < max_attempts
+            ):
+                time.sleep(random.uniform(0.05, 0.2) * attempt)
+                continue
+
+            break
+
         self._raise_for_response(
             endpoint,
             response.status_code if response is not None else 0,

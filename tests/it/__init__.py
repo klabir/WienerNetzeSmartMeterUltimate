@@ -454,6 +454,52 @@ def mock_token(requests_mock: Mocker, code=RESPONSE_CODE, access_token=ACCESS_TO
 
 
 @pytest.mark.usefixtures("requests_mock")
+def mock_refresh_token(
+    requests_mock: Mocker,
+    refresh_token=REFRESH_TOKEN,
+    access_token=ACCESS_TOKEN,
+    new_refresh_token=REFRESH_TOKEN,
+    status: int | None = 200,
+    expires: int = 300,
+    token_type: str = "Bearer",
+):
+    response = {
+        "access_token": access_token,
+        "expires_in": expires,
+        "refresh_expires_in": 6 * expires,
+        "refresh_token": new_refresh_token,
+        "token_type": token_type,
+        "scope": "openid email profile",
+    }
+    matcher_data = {
+        "grant_type": "refresh_token",
+        "client_id": "wn-smartmeter",
+        "redirect_uri": REDIRECT_URI,
+        "refresh_token": refresh_token,
+    }
+    if status == 200:
+        requests_mock.post(
+            f"{AUTH_URL}/token",
+            additional_matcher=post_data_matcher(matcher_data),
+            json=response,
+            status_code=status,
+        )
+    elif status is None:
+        requests_mock.post(
+            f"{AUTH_URL}/token",
+            additional_matcher=post_data_matcher(matcher_data),
+            exc=requests.exceptions.ConnectTimeout,
+        )
+    else:
+        requests_mock.post(
+            f"{AUTH_URL}/token",
+            additional_matcher=post_data_matcher(matcher_data),
+            json={},
+            status_code=status,
+        )
+
+
+@pytest.mark.usefixtures("requests_mock")
 def mock_authenticate(requests_mock: Mocker, username, password, code=RESPONSE_CODE, status: int | None = 302):
     """
     mock POST authenticate call resulting in a 302 Found redirecting to another Location

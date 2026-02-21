@@ -23,13 +23,24 @@ _LOGGER = logging.getLogger(__name__)
 
 class Importer:
 
-    def __init__(self, hass: HomeAssistant, async_smartmeter: AsyncSmartmeter, zaehlpunkt: str, unit_of_measurement: str, granularity: ValueType = ValueType.QUARTER_HOUR):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        async_smartmeter: AsyncSmartmeter,
+        zaehlpunkt: str,
+        unit_of_measurement: str,
+        granularity: ValueType = ValueType.QUARTER_HOUR,
+        skip_login: bool = False,
+        preloaded_zaehlpunkt: dict | None = None,
+    ):
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
         self.hass = hass
         self.async_smartmeter = async_smartmeter
+        self.skip_login = skip_login
+        self.preloaded_zaehlpunkt = preloaded_zaehlpunkt
 
     def is_last_inserted_stat_valid(self, last_inserted_stat):
         return len(last_inserted_stat) == 1 and len(last_inserted_stat[self.id]) == 1 and \
@@ -84,8 +95,11 @@ class Importer:
         )
         _LOGGER.debug("Last inserted stat: %s" % last_inserted_stat)
         try:
-            await self.async_smartmeter.login()
-            zaehlpunkt = await (self.async_smartmeter.get_zaehlpunkt(self.zaehlpunkt))
+            if not self.skip_login:
+                await self.async_smartmeter.login()
+            zaehlpunkt = self.preloaded_zaehlpunkt
+            if zaehlpunkt is None:
+                zaehlpunkt = await self.async_smartmeter.get_zaehlpunkt(self.zaehlpunkt)
 
             if not self.async_smartmeter.is_active(zaehlpunkt):
                 _LOGGER.debug("Smartmeter %s is not active" % zaehlpunkt)

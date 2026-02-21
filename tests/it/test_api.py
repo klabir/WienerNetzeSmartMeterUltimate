@@ -2,6 +2,7 @@
 import pytest
 import time
 import logging
+import re
 from requests_mock import Mocker
 import datetime as dt
 from dateutil.relativedelta import relativedelta
@@ -21,6 +22,7 @@ from it import (
     PASSWORD,
     USERNAME,
     mock_token,
+    mock_refresh_token,
     mock_get_api_key,
     expect_history, expect_bewegungsdaten, zaehlpunkt_response,
 )
@@ -166,13 +168,77 @@ def test_warning_b2b_api_key_change(requests_mock,caplog):
 def test_access_key_expired(requests_mock):
     mock_login_page(requests_mock)
     mock_authenticate(requests_mock, USERNAME, PASSWORD)
-    mock_token(requests_mock, expires=1)
+    mock_token(requests_mock, expires=300)
     mock_get_api_key(requests_mock)
-    sm = smartmeter(username=USERNAME, password=PASSWORD).login()
-    time.sleep(2)
+    sm = smartmeter().login()
+    sm._access_token_expiration = dt.datetime.now() - dt.timedelta(seconds=1)
+    sm._refresh_token_expiration = dt.datetime.now() - dt.timedelta(seconds=1)
     with pytest.raises(SmartmeterConnectionError) as exc_info:
         sm._access_valid_or_raise()
-    assert 'Access Token is not valid anymore' in str(exc_info.value)
+    assert 'Refresh Token is not valid anymore' in str(exc_info.value)
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_refresh_token_success_on_expired_access_token(requests_mock):
+    mock_login_page(requests_mock)
+    mock_authenticate(requests_mock, USERNAME, PASSWORD)
+    mock_token(requests_mock, expires=1)
+    mock_get_api_key(requests_mock)
+    sm = smartmeter().login()
+    time.sleep(2)
+
+    new_access = "NEW_ACCESS_TOKEN_123"
+    mock_refresh_token(requests_mock, access_token=new_access)
+    mock_get_api_key(requests_mock, bearer_token=new_access)
+
+    sm._access_valid_or_raise()
+    assert sm._access_token == new_access
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_refresh_token_failure_fallback_to_full_login(requests_mock):
+    mock_login_page(requests_mock)
+    mock_authenticate(requests_mock, USERNAME, PASSWORD)
+    mock_token(requests_mock, expires=1)
+    mock_get_api_key(requests_mock)
+    sm = smartmeter().login()
+    time.sleep(2)
+
+    mock_refresh_token(requests_mock, status=400)
+    expect_login(requests_mock)
+
+    sm.login()
+    assert sm.is_logged_in()
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_call_api_401_maps_to_login_error(requests_mock):
+    expect_login(requests_mock)
+    requests_mock.get(re.compile(r".*/zaehlpunkte$"), status_code=401, json={"error": "unauthorized"})
+    sm = smartmeter().login()
+    with pytest.raises(SmartmeterLoginError) as exc_info:
+        sm.zaehlpunkte()
+    assert "status 401" in str(exc_info.value)
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_call_api_500_maps_to_connection_error(requests_mock):
+    expect_login(requests_mock)
+    requests_mock.get(re.compile(r".*/zaehlpunkte$"), status_code=500, json={"error": "server"})
+    sm = smartmeter().login()
+    with pytest.raises(SmartmeterConnectionError) as exc_info:
+        sm.zaehlpunkte()
+    assert "status 500" in str(exc_info.value)
+
+
+def test_extract_first_form_action_normalizes_relative_url():
+    sm = smartmeter()
+    action = sm._extract_first_form_action(
+        "<html><body><form action='/auth/realms/logwien/login-actions/authenticate?x=1'></form></body></html>",
+        "No form",
+        "https://log.wien/auth/realms/logwien/protocol/openid-connect/auth?foo=bar",
+    )
+    assert action == "https://log.wien/auth/realms/logwien/login-actions/authenticate?x=1"
 
 
 @pytest.mark.usefixtures("requests_mock")

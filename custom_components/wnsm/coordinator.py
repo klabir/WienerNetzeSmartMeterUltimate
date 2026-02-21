@@ -90,6 +90,8 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         self._async_smartmeter,
                         zaehlpunkt,
                         UnitOfEnergy.KILO_WATT_HOUR,
+                        skip_login=True,
+                        preloaded_zaehlpunkt=zaehlpunkt_response,
                     )
                     await importer.async_import()
             except Exception as exception:  # pylint: disable=broad-except
