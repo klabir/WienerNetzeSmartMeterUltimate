@@ -23,7 +23,6 @@ from homeassistant.helpers.typing import (
 )
 from .const import CONF_SELECTED_ZAEHLPUNKTE, CONF_ZAEHLPUNKTE, DOMAIN
 from .coordinator import WNSMDataUpdateCoordinator
-from .qh_probe_sensor import WNSMQuarterHourProbeSensor
 from .wnsm_sensor import WNSMSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -104,11 +103,7 @@ async def async_setup_entry(
         WNSMSensor(coordinator, zaehlpunkt)
         for zaehlpunkt in zaehlpunkte
     ]
-    probe_sensors = [
-        WNSMQuarterHourProbeSensor(coordinator, zaehlpunkt)
-        for zaehlpunkt in zaehlpunkte
-    ]
-    async_add_entities([*wnsm_sensors, *probe_sensors])
+    async_add_entities(wnsm_sensors)
 
 
 async def async_setup_platform(
@@ -131,5 +126,4 @@ async def async_setup_platform(
     )
     await coordinator.async_config_entry_first_refresh()
     wnsm_sensor = WNSMSensor(coordinator, config[CONF_DEVICE_ID])
-    probe_sensor = WNSMQuarterHourProbeSensor(coordinator, config[CONF_DEVICE_ID])
-    async_add_entities([wnsm_sensor, probe_sensor], update_before_add=True)
+    async_add_entities([wnsm_sensor], update_before_add=True)
