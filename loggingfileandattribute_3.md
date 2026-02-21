@@ -27,6 +27,7 @@ This document specifies the exact logging changes that were implemented so anoth
      - `/config/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/*.json`
    - Before first write for a client session, that entry-specific directory is fully cleaned:
      - `/config/tmp/wnsm_api_calls/<entry_id>` including all nested subfolders/files
+   - Failed API responses (HTTP 4xx/5xx) are logged as well before exceptions are raised
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
@@ -177,11 +178,15 @@ Updated flow:
    - fallback to `response.text` when non-JSON
 3. Keep debug logging.
 4. Call `_record_api_call(...)` with request/response details.
-5. Return behavior:
+5. Apply centralized status handling:
+   - 401/403 -> `SmartmeterLoginError`
+   - other 4xx/5xx -> `SmartmeterConnectionError`
+   - includes endpoint + status + response payload in exception message
+6. Return behavior:
    - if `return_response=True`, return raw `response`
    - else return parsed JSON when available
    - else raise:
-     - `SmartmeterConnectionError("Could not parse JSON response for endpoint '...'" )`
+      - `SmartmeterConnectionError("Could not parse JSON response for endpoint '...'" )`
 
 ## Attribute schema exposed on sensor
 

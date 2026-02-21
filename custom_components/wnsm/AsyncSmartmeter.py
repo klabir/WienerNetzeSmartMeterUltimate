@@ -29,7 +29,7 @@ class AsyncSmartmeter:
         Returns response already sanitized of the specified zaehlpunkt in ctor
         """
         response = await self.hass.async_add_executor_job(
-            self.smartmeter.historical_data,
+            self.smartmeter.meter_readings,
         )
         if "Exception" in response:
             raise RuntimeError("Cannot access /meterReadings: ", response)

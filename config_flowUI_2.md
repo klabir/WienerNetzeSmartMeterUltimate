@@ -114,6 +114,8 @@ Added top-level `options.step.init`:
 4. Runtime consumer alignment:
    - `scan_interval` is used by coordinator update interval
    - `enable_raw_api_response_write` is forwarded into shared Smartmeter client
+5. Auth hardening compatibility check:
+   - no schema/translation/options-flow contract changes required for refresh-token or API status handling updates
 
 ## Runtime contract (must exist for first-time-right implementation)
 

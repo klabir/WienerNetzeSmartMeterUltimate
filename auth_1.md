@@ -119,6 +119,76 @@ Net effect:
 - Lower login churn and fewer repeated auth handshakes.
 - Same auth protocol and same auth error semantics.
 
+### 8) Refresh token flow implemented
+
+Added:
+
+- `is_refresh_expired()`
+- `refresh_tokens()`
+
+`refresh_tokens()` behavior:
+
+1. Validate refresh token exists and is not expired.
+2. POST to `AUTH_URL + "token"` with:
+   - `grant_type=refresh_token`
+   - `client_id=wn-smartmeter`
+   - `redirect_uri=<REDIRECT_URI>`
+   - `refresh_token=<stored_refresh_token>`
+3. Require HTTP 200 and `token_type == "Bearer"`.
+4. Update:
+   - `_access_token`
+   - optional `_refresh_token` (if response includes new one)
+   - `_access_token_expiration`
+   - optional `_refresh_token_expiration`
+
+Usage:
+
+- `login()` now attempts refresh first when access token is expired.
+- `_access_valid_or_raise()` now refreshes access token instead of immediately failing.
+
+### 9) Auth/API HTTP status handling hardened
+
+Added helper:
+
+- `_raise_for_response(endpoint, status_code, error_data)`
+
+Behavior:
+
+- status `< 400`: no-op
+- status `401/403`: raise `SmartmeterLoginError(...)`
+- status `>= 400` otherwise: raise `SmartmeterConnectionError(...)`
+
+This is called in `_call_api()` after response parsing and logging capture.
+
+### 10) Auth network calls now use explicit timeouts
+
+Added `timeout=60.0` in:
+
+- `load_login_page()` GET auth page
+- `credentials_login()` first POST + second POST
+- `load_tokens()` token exchange
+- `refresh_tokens()` refresh exchange
+- `_get_api_key()` app-config request
+
+Net effect:
+
+- Prevents hangs during login/refresh/api-key fetch.
+
+### 11) Related runtime API call fix (from improvement item #3)
+
+File:
+
+- `custom_components/wnsm/AsyncSmartmeter.py`
+
+Change:
+
+- `get_meter_readings()` now calls `self.smartmeter.meter_readings` (correct endpoint wrapper)
+- previously it called `self.smartmeter.historical_data`
+
+Net effect:
+
+- endpoint intent matches method name and avoids wrong payload mapping.
+
 ## Rebuild checklist for another LLM
 
 1. Edit only `custom_components/wnsm/api/client.py`.
@@ -132,6 +202,10 @@ Net effect:
 6. Keep all existing auth messages unchanged except the bearer message now prints `None` if missing.
 7. Extend ctor with `log_scope` but keep auth sequence and token handling unchanged.
 8. Implement runtime usage with a shared coordinator-backed client per config entry.
+9. Implement refresh token flow and use it in `login()` + `_access_valid_or_raise()`.
+10. Add centralized HTTP status->exception mapping in `_call_api()`.
+11. Add explicit timeouts for all auth-related HTTP calls.
+12. In `AsyncSmartmeter.get_meter_readings()`, call `meter_readings` instead of `historical_data`.
 
 ## Post-change verification done
 

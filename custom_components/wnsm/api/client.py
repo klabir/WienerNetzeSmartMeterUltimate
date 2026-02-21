@@ -18,6 +18,7 @@ import re
 
 from . import constants as const
 from .errors import (
+    SmartmeterError,
     SmartmeterConnectionError,
     SmartmeterLoginError,
     SmartmeterQueryError,
@@ -86,6 +87,9 @@ class Smartmeter:
     def is_login_expired(self):
         return self._access_token_expiration is not None and datetime.now() >= self._access_token_expiration
 
+    def is_refresh_expired(self):
+        return self._refresh_token_expiration is not None and datetime.now() >= self._refresh_token_expiration
+
     def is_logged_in(self):
         return self._access_token is not None and not self.is_login_expired()
 
@@ -133,7 +137,7 @@ class Smartmeter:
         
         login_url = const.AUTH_URL + "auth?" + parse.urlencode(self._local_login_args)
         try:
-            result = self.session.get(login_url)
+            result = self.session.get(login_url, timeout=60.0)
         except Exception as exception:
             raise SmartmeterConnectionError("Could not load login page") from exception
         if result.status_code != 200:
@@ -157,6 +161,7 @@ class Smartmeter:
                     "login": " "
                 },
                 allow_redirects=False,
+                timeout=60.0,
             )
             action = self._extract_first_form_action(
                 result.content,
@@ -170,6 +175,7 @@ class Smartmeter:
                     "password": self.password,
                 },
                 allow_redirects=False,
+                timeout=60.0,
             )
         except Exception as exception:
             raise SmartmeterConnectionError(
@@ -204,7 +210,8 @@ class Smartmeter:
         try:
             result = self.session.post(
                 const.AUTH_URL + "token",
-                data=const.build_access_token_args(code=code , code_verifier=self._code_verifier)
+                data=const.build_access_token_args(code=code , code_verifier=self._code_verifier),
+                timeout=60.0,
             )
         except Exception as exception:
             raise SmartmeterConnectionError(
@@ -223,12 +230,54 @@ class Smartmeter:
             )
         return tokens
 
+    def refresh_tokens(self):
+        """Refresh access token with refresh token when possible."""
+        if self._refresh_token is None or self.is_refresh_expired():
+            raise SmartmeterConnectionError("Refresh Token is not valid anymore, please re-log!")
+        try:
+            result = self.session.post(
+                const.AUTH_URL + "token",
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": "wn-smartmeter",
+                    "redirect_uri": const.REDIRECT_URI,
+                    "refresh_token": self._refresh_token,
+                },
+                timeout=60.0,
+            )
+        except Exception as exception:
+            raise SmartmeterConnectionError("Could not refresh access token") from exception
+
+        if result.status_code != 200:
+            raise SmartmeterConnectionError(
+                f"Could not refresh access token: {result.content}"
+            )
+        tokens = result.json()
+        token_type = tokens.get("token_type")
+        if token_type != "Bearer":
+            raise SmartmeterLoginError(
+                f"Bearer token required, but got {token_type!r}"
+            )
+
+        now = datetime.now()
+        self._access_token = tokens["access_token"]
+        if "refresh_token" in tokens and tokens["refresh_token"] is not None:
+            self._refresh_token = tokens["refresh_token"]
+        self._access_token_expiration = now + timedelta(seconds=tokens["expires_in"])
+        refresh_expires_in = tokens.get("refresh_expires_in")
+        if refresh_expires_in is not None:
+            self._refresh_token_expiration = now + timedelta(seconds=refresh_expires_in)
+        return tokens
+
     def login(self):
         """
         login with credentials specified in ctor
         """
-        if self.is_login_expired():
-            self.reset()
+        if self._access_token is not None and self.is_login_expired():
+            try:
+                self.refresh_tokens()
+            except SmartmeterError:
+                self.reset()
         if not self.is_logged_in():
             url = self.load_login_page()
             code = self.credentials_login(url)
@@ -255,10 +304,15 @@ class Smartmeter:
                 "Access Token is not valid anymore, please re-log!"
             )
         if datetime.now() >= self._access_token_expiration:
-            # TODO: If the refresh token is still valid, it could be refreshed here
-            raise SmartmeterConnectionError(
-                "Access Token is not valid anymore, please re-log!"
-            )
+            self.refresh_tokens()
+
+    def _raise_for_response(self, endpoint: str, status_code: int, error_data: Any):
+        if status_code < 400:
+            return
+        message = f"API request failed for endpoint '{endpoint}' with status {status_code}: {error_data}"
+        if status_code in (401, 403):
+            raise SmartmeterLoginError(message)
+        raise SmartmeterConnectionError(message)
 
     @staticmethod
     def _extract_first_form_action(content, no_form_error):
@@ -379,7 +433,9 @@ class Smartmeter:
 
         headers = {"Authorization": f"Bearer {token}"}
         try:
-            result = self.session.get(const.API_CONFIG_URL, headers=headers).json()
+            result = self.session.get(
+                const.API_CONFIG_URL, headers=headers, timeout=60.0
+            ).json()
         except Exception as exception:
             raise SmartmeterConnectionError("Could not obtain API key") from exception
 
@@ -469,6 +525,11 @@ class Smartmeter:
             request_headers=headers,
             response_status=response.status_code if response is not None else None,
             response_body=response_json if response_json is not None else response_text,
+        )
+        self._raise_for_response(
+            endpoint,
+            response.status_code if response is not None else 0,
+            response_json if response_json is not None else response_text,
         )
 
         if return_response:
