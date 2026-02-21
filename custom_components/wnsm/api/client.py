@@ -1,6 +1,7 @@
 """Contains the Smartmeter API Client."""
 import json
 import logging
+import shutil
 from datetime import datetime, timedelta, date
 from urllib import parse
 from typing import List, Dict, Any
@@ -60,6 +61,7 @@ class Smartmeter:
         self._local_login_args = None
         self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
         self._raw_api_response_dir = "/config/tmp/wnsm_api_calls"
+        self._raw_api_log_prepared = False
         self._recent_api_calls = []
         self._max_recent_api_calls = 20
 
@@ -74,6 +76,7 @@ class Smartmeter:
         self._code_verifier = None
         self._code_challenge = None
         self._local_login_args = None
+        self._raw_api_log_prepared = False
         self._recent_api_calls = []
 
     def is_login_expired(self):
@@ -278,17 +281,56 @@ class Smartmeter:
         if not self._enable_raw_api_response_write:
             return None
         try:
-            os.makedirs(self._raw_api_response_dir, exist_ok=True)
+            self._prepare_raw_api_response_dir()
+            zaehlpunkt = self._extract_zaehlpunkt_for_log(
+                endpoint,
+                payload.get("query"),
+                payload.get("request_body"),
+            )
+            sub_dir = os.path.join(
+                self._raw_api_response_dir,
+                self._sanitize_filename(zaehlpunkt),
+            )
+            os.makedirs(sub_dir, exist_ok=True)
             safe_endpoint = self._sanitize_filename(endpoint)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             filename = f"{timestamp}_{method.lower()}_{safe_endpoint}.json"
-            path = os.path.join(self._raw_api_response_dir, filename)
+            path = os.path.join(sub_dir, filename)
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, ensure_ascii=False)
             return path
         except Exception as exception:  # pylint: disable=broad-except
             logger.warning("Could not write raw API response file: %s", exception)
             return None
+
+    def _prepare_raw_api_response_dir(self) -> None:
+        if self._raw_api_log_prepared:
+            return
+        if os.path.exists(self._raw_api_response_dir):
+            shutil.rmtree(self._raw_api_response_dir, ignore_errors=True)
+        os.makedirs(self._raw_api_response_dir, exist_ok=True)
+        self._raw_api_log_prepared = True
+
+    @staticmethod
+    def _extract_zaehlpunkt_for_log(
+        endpoint: str,
+        query: dict | None,
+        request_body: dict | None,
+    ) -> str:
+        if isinstance(query, dict) and query.get("zaehlpunkt"):
+            return str(query["zaehlpunkt"])
+        if isinstance(request_body, dict) and request_body.get("zaehlpunkt"):
+            return str(request_body["zaehlpunkt"])
+
+        patterns = [
+            r"messdaten/[^/]+/([^/]+)/",
+            r"zaehlpunkte/[^/]+/([^/]+)/",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, endpoint)
+            if match:
+                return str(match.group(1))
+        return "general"
 
     def _record_api_call(
         self,
