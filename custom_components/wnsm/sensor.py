@@ -1,25 +1,12 @@
 """
 WienerNetze Smartmeter sensor platform
 """
-import collections.abc
 import logging
-from datetime import timedelta
-from typing import Optional
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
 from homeassistant import core, config_entries
-from homeassistant.components.sensor import (
-    PLATFORM_SCHEMA
-)
 from homeassistant.const import (
     CONF_USERNAME,
     CONF_PASSWORD,
-    CONF_DEVICE_ID,
-)
-from homeassistant.helpers.typing import (
-    ConfigType,
-    DiscoveryInfoType,
 )
 from .const import (
     CONF_ENABLE_DAILY_CONS,
@@ -39,23 +26,6 @@ from .daily_cons_sensor import WNSMDailyConsSensor
 from .wnsm_sensor import WNSMSensor
 
 _LOGGER = logging.getLogger(__name__)
-# Time between updating data from Wiener Netze
-SCAN_INTERVAL = timedelta(minutes=60 * 6)
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-        vol.Required(CONF_DEVICE_ID): cv.string,
-        vol.Optional(
-            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL_MINUTES
-        ): vol.All(vol.Coerce(int), vol.Range(min=5, max=720)),
-        vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
-        vol.Optional(CONF_ENABLE_DAILY_CONS, default=DEFAULT_ENABLE_DAILY_CONS): cv.boolean,
-        vol.Optional(
-            CONF_ENABLE_DAILY_METER_READ, default=DEFAULT_ENABLE_DAILY_METER_READ
-        ): cv.boolean,
-    }
-)
 
 
 def _resolve_selected_zaehlpunkte(config_entry: config_entries.ConfigEntry) -> list[str]:
@@ -145,42 +115,3 @@ async def async_setup_entry(
             for zaehlpunkt in zaehlpunkte
         )
     async_add_entities(entities)
-
-
-async def async_setup_platform(
-    hass: core.HomeAssistant,  # pylint: disable=unused-argument
-    config: ConfigType,
-    async_add_entities: collections.abc.Callable,
-    discovery_info: Optional[
-        DiscoveryInfoType
-    ] = None,  # pylint: disable=unused-argument
-) -> None:
-    """Set up the sensor platform by adding it into configuration.yaml"""
-    coordinator = WNSMDataUpdateCoordinator(
-        hass=hass,
-        username=config[CONF_USERNAME],
-        password=config[CONF_PASSWORD],
-        zaehlpunkte=[config[CONF_DEVICE_ID]],
-        scan_interval_minutes=int(
-            config.get(CONF_SCAN_INTERVAL, SCAN_INTERVAL.total_seconds() // 60)
-        ),
-        enable_raw_api_response_write=bool(
-            config.get(CONF_ENABLE_RAW_API_RESPONSE_WRITE, False)
-        ),
-        enable_daily_cons_statistics=bool(
-            config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS)
-        ),
-        enable_daily_meter_read_statistics=bool(
-            config.get(
-                CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ
-            )
-        ),
-        log_scope="yaml",
-    )
-    await coordinator.async_config_entry_first_refresh()
-    wnsm_sensor = WNSMSensor(coordinator, config[CONF_DEVICE_ID])
-    entities = [wnsm_sensor]
-    if bool(config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS)):
-        entities.append(WNSMDailyConsSensor(coordinator, config[CONF_DEVICE_ID]))
-        entities.append(WNSMDailyConsDaySensor(coordinator, config[CONF_DEVICE_ID]))
-    async_add_entities(entities, update_before_add=True)

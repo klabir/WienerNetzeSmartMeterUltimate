@@ -4,6 +4,11 @@ This integration imports Wiener Netze smart meter data into Home Assistant and e
 - sensor entities
 - recorder statistics streams for Energy Dashboard and history views
 
+## Configuration Mode
+
+This custom component is configurable through the Home Assistant UI only.
+YAML configuration is not supported.
+
 ## Initial Setup (Login Screen)
 
 Use the Home Assistant integration dialog to enter your Wiener Netze username and password.
