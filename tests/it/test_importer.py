@@ -175,6 +175,9 @@ async def test_import_statistics_emits_mean_for_cumulative_stream(monkeypatch):
     assert cumulative_metadata.statistic_id.endswith("_cum_abs")
     if hasattr(cumulative_metadata, "has_mean"):
         assert cumulative_metadata.has_mean is True
+    if hasattr(cumulative_metadata, "has_sum"):
+        assert cumulative_metadata.has_sum is True
     assert len(cumulative_statistics) == 1
     assert cumulative_statistics[0].state == pytest.approx(1.5)
     assert cumulative_statistics[0].mean == pytest.approx(1.5)
+    assert cumulative_statistics[0].sum == pytest.approx(1.5)

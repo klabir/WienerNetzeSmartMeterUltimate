@@ -69,11 +69,15 @@ class Importer:
             return False
 
         # Daily statistics-graph rendering is most reliable when this stream
-        # also carries mean values, so old state-only rows should be upgraded.
-        if self._statistics_metadata_capabilities()["has_mean"]:
-            return row.get("mean") is not None
-
-        return True
+        # also carries mean and sum values, so old rows should be upgraded.
+        capabilities = self._statistics_metadata_capabilities()
+        has_required_mean = (
+            row.get("mean") is not None if capabilities["has_mean"] else True
+        )
+        has_required_sum = (
+            row.get("sum") is not None if capabilities["has_sum"] else True
+        )
+        return has_required_mean and has_required_sum
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -138,7 +142,7 @@ class Importer:
     async def _backfill_cumulative_from_existing_sum(self) -> None:
         """Populate cumulative state stream from existing hourly sum stream once."""
         existing_cumulative = await self._get_last_inserted_statistics(
-            self.cumulative_id, {"state", "mean"}
+            self.cumulative_id, {"state", "mean", "sum"}
         )
         if self.is_last_inserted_cumulative_stat_valid(existing_cumulative):
             return
@@ -169,6 +173,7 @@ class Importer:
                     start=row_start,
                     state=float(row_sum),
                     mean=float(row_sum),
+                    sum=float(row_sum),
                 )
             )
 
@@ -305,7 +310,7 @@ class Importer:
         if capabilities["has_mean"]:
             metadata["has_mean"] = True
         if capabilities["has_sum"]:
-            metadata["has_sum"] = False
+            metadata["has_sum"] = True
         if capabilities["unit_class"]:
             metadata["unit_class"] = EnergyConverter.UNIT_CLASS
         if capabilities["mean_type"]:
@@ -404,6 +409,7 @@ class Importer:
                     start=ts,
                     state=total_usage_float,
                     mean=total_usage_float,
+                    sum=total_usage_float,
                 )
             )
         if len(statistics) > 0:
