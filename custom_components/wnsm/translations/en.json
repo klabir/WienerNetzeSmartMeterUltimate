@@ -2,7 +2,8 @@
   "config": {
     "error": {
       "auth": "Username/password invalid",
-      "connection_error": "Unable to connect"
+      "connection_error": "Unable to connect",
+      "no_meter_selected": "Select at least one meter"
     },
     "flow_title": "Wiener Netze Smartmeter",
     "step": {
@@ -15,17 +16,28 @@
           "scan_interval": "Scan interval (minutes)",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls"
         }        
+      },
+      "select_meters": {
+        "title": "Select meters",
+        "description": "Choose which discovered meters should be created as entities.",
+        "data": {
+          "selected_zaehlpunkte": "Meters"
+        }
       }
     }
   },
   "options": {
+    "error": {
+      "no_meter_selected": "Select at least one meter"
+    },
     "step": {
       "init": {
         "title": "Wiener Netze Smartmeter Options",
         "description": "Configure polling behavior. Saving automatically reloads the integration.",
         "data": {
           "scan_interval": "Scan interval (minutes)",
-          "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls"
+          "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
+          "selected_zaehlpunkte": "Meters"
         }
       }
     }

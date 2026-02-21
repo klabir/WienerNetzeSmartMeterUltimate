@@ -9,7 +9,12 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import selector
 
 from .api import Smartmeter
-from .const import ATTRS_ZAEHLPUNKTE_CALL, CONF_ZAEHLPUNKTE, DOMAIN
+from .const import (
+    ATTRS_ZAEHLPUNKTE_CALL,
+    CONF_SELECTED_ZAEHLPUNKTE,
+    CONF_ZAEHLPUNKTE,
+    DOMAIN,
+)
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +40,80 @@ def _scan_interval_field(default_scan_interval: int):
         return vol.All(vol.Coerce(int), vol.Range(min=5, max=720))
 
 
+def _meter_id(zp: dict[str, Any]) -> str | None:
+    meter_id = zp.get("zaehlpunktnummer")
+    if meter_id is None:
+        return None
+    meter_id_str = str(meter_id).strip()
+    return meter_id_str if meter_id_str else None
+
+
+def _is_active_meter(zp: dict[str, Any]) -> bool:
+    is_active = zp.get("isActive", zp.get("active", True))
+    is_ready = zp.get("isSmartMeterMarketReady", zp.get("smartMeterReady", True))
+    return bool(is_active) and bool(is_ready)
+
+
+def _meter_label(zp: dict[str, Any]) -> str:
+    meter_id = _meter_id(zp) or "unknown"
+    custom_label = zp.get("customLabel") or zp.get("label")
+    city = zp.get("city")
+    if city is None:
+        city = (zp.get("verbrauchsstelle") or {}).get("ort")
+    status = "active" if _is_active_meter(zp) else "inactive"
+    if custom_label and city:
+        return f"{meter_id} ({custom_label}, {city}, {status})"
+    if custom_label:
+        return f"{meter_id} ({custom_label}, {status})"
+    if city:
+        return f"{meter_id} ({city}, {status})"
+    return f"{meter_id} ({status})"
+
+
+def _build_meter_options(zps: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[str]]:
+    options: list[dict[str, str]] = []
+    default_selected: list[str] = []
+    seen: set[str] = set()
+
+    for zp in zps:
+        meter_id = _meter_id(zp)
+        if meter_id is None or meter_id in seen:
+            continue
+        seen.add(meter_id)
+        options.append({"value": meter_id, "label": _meter_label(zp)})
+        if _is_active_meter(zp):
+            default_selected.append(meter_id)
+
+    if not default_selected:
+        default_selected = [option["value"] for option in options]
+
+    return options, default_selected
+
+
+def _normalize_selected_meters(selected: Any) -> list[str]:
+    if selected is None:
+        return []
+    if isinstance(selected, str):
+        return [selected]
+    if isinstance(selected, list):
+        return [str(item) for item in selected]
+    return []
+
+
+def _meter_select_field(options: list[dict[str, str]]):
+    try:
+        selector_config: dict[str, Any] = {
+            "options": options,
+            "multiple": True,
+        }
+        if hasattr(selector, "SelectSelectorMode"):
+            selector_config["mode"] = selector.SelectSelectorMode.DROPDOWN
+        return selector.SelectSelector(selector.SelectSelectorConfig(**selector_config))
+    except Exception:  # pylint: disable=broad-except
+        option_values = [option["value"] for option in options]
+        return vol.All(cv.ensure_list, [vol.In(option_values)])
+
+
 def user_schema(default_scan_interval: int):
     """Build user step schema."""
     return vol.Schema(
@@ -53,6 +132,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
     """Wiener Netze Smartmeter config flow."""
 
     data: Optional[dict[str, Any]]
+    _discovered_zaehlpunkte: list[dict[str, Any]]
 
     @staticmethod
     def async_get_options_flow(
@@ -79,7 +159,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
     async def async_step_user(self, user_input: Optional[dict[str, Any]] = None):
         """Invoked when a user initiates a flow via the user interface."""
         errors: dict[str, str] = {}
-        zps = []
+        zps: list[dict[str, Any]] = []
         if user_input is not None:
             try:
                 zps = await self.validate_auth(
@@ -90,21 +170,68 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
                 _LOGGER.exception(exception)
                 errors["base"] = "auth"
             if not errors:
-                # Input is valid, set data
-                self.data = dict(user_input)
-                self.data[CONF_ZAEHLPUNKTE] = [
-                    translate_dict(zp, ATTRS_ZAEHLPUNKTE_CALL)
-                    for zp in zps
-                    if zp["isActive"]  # only create active zaehlpunkte
-                ]
-                # User is done authenticating, create entry
+                meter_options, default_selected = _build_meter_options(zps)
+                if not meter_options:
+                    errors["base"] = "no_meter_selected"
+                else:
+                    self._discovered_zaehlpunkte = zps
+                    # Input is valid, set data
+                    self.data = dict(user_input)
+                    self.data[CONF_ZAEHLPUNKTE] = [
+                        translate_dict(zp, ATTRS_ZAEHLPUNKTE_CALL)
+                        for zp in zps
+                    ]
+                    self.data[CONF_SELECTED_ZAEHLPUNKTE] = default_selected
+                    return await self.async_step_select_meters()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=user_schema(DEFAULT_SCAN_INTERVAL_MINUTES),
+            errors=errors,
+        )
+
+    async def async_step_select_meters(self, user_input: Optional[dict[str, Any]] = None):
+        """Allow users to select which discovered meters should be set up."""
+        errors: dict[str, str] = {}
+        if getattr(self, "data", None) is None:
+            return await self.async_step_user()
+
+        meter_options, default_selected = _build_meter_options(
+            getattr(self, "_discovered_zaehlpunkte", [])
+        )
+        option_values = {option["value"] for option in meter_options}
+        current_selected = _normalize_selected_meters(
+            self.data.get(CONF_SELECTED_ZAEHLPUNKTE, default_selected)
+        )
+        current_selected = [value for value in current_selected if value in option_values]
+        if not current_selected:
+            current_selected = default_selected
+
+        if user_input is not None:
+            selected_meters = _normalize_selected_meters(
+                user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
+            )
+            selected_meters = [
+                value for value in selected_meters if value in option_values
+            ]
+            if not selected_meters:
+                errors["base"] = "no_meter_selected"
+            else:
+                self.data[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
                 return self.async_create_entry(
                     title="Wiener Netze Smartmeter", data=self.data
                 )
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=user_schema(DEFAULT_SCAN_INTERVAL_MINUTES),
+            step_id="select_meters",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SELECTED_ZAEHLPUNKTE,
+                        default=current_selected,
+                    ): _meter_select_field(meter_options)
+                }
+            ),
             errors=errors,
         )
 
@@ -124,7 +251,71 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
         if config_entry is None:
             return self.async_abort(reason="unknown_error")
 
+        available_meters = config_entry.data.get(CONF_ZAEHLPUNKTE, [])
+        meter_options, default_selected = _build_meter_options(available_meters)
+        option_values = {option["value"] for option in meter_options}
+        current_selected_meters = _normalize_selected_meters(
+            config_entry.options.get(
+                CONF_SELECTED_ZAEHLPUNKTE,
+                config_entry.data.get(CONF_SELECTED_ZAEHLPUNKTE, default_selected),
+            )
+        )
+        current_selected_meters = [
+            value for value in current_selected_meters if value in option_values
+        ]
+        if not current_selected_meters:
+            current_selected_meters = default_selected
+
         if user_input is not None:
+            selected_meters = _normalize_selected_meters(
+                user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
+            )
+            selected_meters = [
+                value for value in selected_meters if value in option_values
+            ]
+            if not selected_meters:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_SCAN_INTERVAL,
+                                default=config_entry.options.get(
+                                    CONF_SCAN_INTERVAL,
+                                    config_entry.data.get(
+                                        CONF_SCAN_INTERVAL,
+                                        DEFAULT_SCAN_INTERVAL_MINUTES,
+                                    ),
+                                ),
+                            ): _scan_interval_field(
+                                config_entry.options.get(
+                                    CONF_SCAN_INTERVAL,
+                                    config_entry.data.get(
+                                        CONF_SCAN_INTERVAL,
+                                        DEFAULT_SCAN_INTERVAL_MINUTES,
+                                    ),
+                                )
+                            ),
+                            vol.Optional(
+                                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+                                default=config_entry.options.get(
+                                    CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+                                    config_entry.data.get(
+                                        CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+                                        False,
+                                    ),
+                                ),
+                            ): cv.boolean,
+                            vol.Required(
+                                CONF_SELECTED_ZAEHLPUNKTE,
+                                default=current_selected_meters,
+                            ): _meter_select_field(meter_options),
+                        }
+                    ),
+                    errors={"base": "no_meter_selected"},
+                )
+            user_input = dict(user_input)
+            user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
             self.hass.async_create_task(
                 self.hass.config_entries.async_reload(config_entry.entry_id)
             )
@@ -151,6 +342,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                         CONF_ENABLE_RAW_API_RESPONSE_WRITE,
                         default=current_enable_raw_api_response_write,
                     ): cv.boolean,
+                    vol.Required(
+                        CONF_SELECTED_ZAEHLPUNKTE,
+                        default=current_selected_meters,
+                    ): _meter_select_field(meter_options),
                 }
             ),
         )

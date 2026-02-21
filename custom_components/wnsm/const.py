@@ -4,6 +4,7 @@
 DOMAIN = "wnsm"
 
 CONF_ZAEHLPUNKTE = "zaehlpunkte"
+CONF_SELECTED_ZAEHLPUNKTE = "selected_zaehlpunkte"
 
 ATTRS_ZAEHLPUNKT_CALL = [
     ("zaehlpunktnummer", "zaehlpunktnummer"),

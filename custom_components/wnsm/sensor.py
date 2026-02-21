@@ -2,6 +2,7 @@
 WienerNetze Smartmeter sensor platform
 """
 import collections.abc
+import logging
 from datetime import timedelta
 from typing import Optional
 
@@ -20,10 +21,12 @@ from homeassistant.helpers.typing import (
     ConfigType,
     DiscoveryInfoType,
 )
-from .const import CONF_ZAEHLPUNKTE, DOMAIN
+from .const import CONF_SELECTED_ZAEHLPUNKTE, CONF_ZAEHLPUNKTE, DOMAIN
 from .coordinator import WNSMDataUpdateCoordinator
 from .qh_probe_sensor import WNSMQuarterHourProbeSensor
 from .wnsm_sensor import WNSMSensor
+
+_LOGGER = logging.getLogger(__name__)
 # Time between updating data from Wiener Netze
 SCAN_INTERVAL = timedelta(minutes=60 * 6)
 CONF_ENABLE_RAW_API_RESPONSE_WRITE = "enable_raw_api_response_write"
@@ -36,6 +39,37 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(CONF_DEVICE_ID): cv.string,
     }
 )
+
+
+def _resolve_selected_zaehlpunkte(config_entry: config_entries.ConfigEntry) -> list[str]:
+    """Return selected meter IDs with backward-compatible defaults."""
+    config = config_entry.data
+    available = [zp["zaehlpunktnummer"] for zp in config.get(CONF_ZAEHLPUNKTE, [])]
+    active_default = [
+        zp["zaehlpunktnummer"]
+        for zp in config.get(CONF_ZAEHLPUNKTE, [])
+        if zp.get("active", True) and zp.get("smartMeterReady", True)
+    ]
+    default_selected = active_default if active_default else available
+
+    selected = config_entry.options.get(
+        CONF_SELECTED_ZAEHLPUNKTE,
+        config.get(CONF_SELECTED_ZAEHLPUNKTE, default_selected),
+    )
+    if isinstance(selected, str):
+        selected = [selected]
+    if not isinstance(selected, list):
+        selected = default_selected
+
+    selected_filtered = [value for value in selected if value in available]
+    if selected_filtered:
+        return selected_filtered
+
+    _LOGGER.warning(
+        "No selected WNSM meters matched available meters for entry %s. Falling back to defaults.",
+        config_entry.entry_id,
+    )
+    return default_selected
 
 
 async def async_setup_entry(
@@ -55,7 +89,7 @@ async def async_setup_entry(
             config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES),
         )
     )
-    zaehlpunkte = [zp["zaehlpunktnummer"] for zp in config[CONF_ZAEHLPUNKTE]]
+    zaehlpunkte = _resolve_selected_zaehlpunkte(config_entry)
     coordinator = WNSMDataUpdateCoordinator(
         hass=hass,
         username=config[CONF_USERNAME],
