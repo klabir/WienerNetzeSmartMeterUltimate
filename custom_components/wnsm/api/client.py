@@ -28,6 +28,7 @@ from .errors import (
 )
 
 logger = logging.getLogger(__name__)
+CONSUMPTION_OBIS_PREFERENCE = ("1-1:1.9.0", "1-1:1.8.0")
 
 
 class Smartmeter:
@@ -858,7 +859,11 @@ class Smartmeter:
         """Deletes ereignis."""
         return self._call_api(f"user/ereignis/{ereignis_id}", method="DELETE")
 
-    def find_valid_obis_data(self, zaehlwerke: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def find_valid_obis_data(
+        self,
+        zaehlwerke: List[Dict[str, Any]],
+        preferred_obis_codes: List[str] | None = None,
+    ) -> Dict[str, Any]:
         """
         Find and validate data with valid OBIS codes from a list of zaehlwerke.
         """
@@ -885,7 +890,27 @@ class Smartmeter:
                 obis = zaehlwerk.get("obisCode")
                 logger.debug(f"Valid OBIS code '{obis}' has empty or missing messwerte. Data is probably not available yet.")
                 
-        # Log a warning if multiple valid OBIS codes are found        
+        preferred = preferred_obis_codes or []
+        if preferred:
+            for obis in preferred:
+                preferred_data = next(
+                    (
+                        zaehlwerk
+                        for zaehlwerk in valid_data
+                        if zaehlwerk.get("obisCode") == obis
+                    ),
+                    None,
+                )
+                if preferred_data is not None:
+                    return preferred_data
+
+            found_valid_obis = [zaehlwerk["obisCode"] for zaehlwerk in valid_data]
+            raise SmartmeterQueryError(
+                "No preferred OBIS code found. "
+                f"Preferred: {preferred}. Found: {found_valid_obis}"
+            )
+
+        # Log a warning if multiple valid OBIS codes are found
         if len(valid_data) > 1:
             found_valid_obis = [zaehlwerk["obisCode"] for zaehlwerk in valid_data]
             logger.warning(f"Multiple valid OBIS codes found: {found_valid_obis}. Using the first one.")
@@ -897,7 +922,8 @@ class Smartmeter:
         zaehlpunktnummer: str = None,
         date_from: date = None,
         date_until: date = None,
-        valuetype: const.ValueType = const.ValueType.METER_READ
+        valuetype: const.ValueType = const.ValueType.METER_READ,
+        preferred_obis_codes: List[str] | None = None,
     ):
         """
         Query historical data in a batch
@@ -948,8 +974,32 @@ class Smartmeter:
             logger.debug("Returned data: %s", data)
             raise SmartmeterQueryError("Returned data does not contain any zaehlwerke or is empty.")
 
-        valid_obis_data = self.find_valid_obis_data(zaehlwerke)
+        valid_obis_data = self.find_valid_obis_data(
+            zaehlwerke,
+            preferred_obis_codes=preferred_obis_codes,
+        )
         return valid_obis_data
+
+    def historical_day_consumption(
+        self,
+        zaehlpunktnummer: str = None,
+        date_from: date = None,
+        date_until: date = None,
+    ):
+        """
+        Query daily historical consumption with `wertetyp=DAY`.
+
+        This is intentionally pinned to consuming OBIS codes and will fail if only
+        non-consuming OBIS codes are available.
+        """
+        data = self.historical_data(
+            zaehlpunktnummer=zaehlpunktnummer,
+            date_from=date_from,
+            date_until=date_until,
+            valuetype=const.ValueType.DAY,
+            preferred_obis_codes=list(CONSUMPTION_OBIS_PREFERENCE),
+        )
+        return data
 
     def bewegungsdaten(
         self,

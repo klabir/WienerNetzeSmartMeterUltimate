@@ -402,6 +402,41 @@ def test_history_no_obis_code(requests_mock: Mocker, caplog):
     assert 'Returned zaehlwerke: ' in caplog.text
     assert 'No OBIS codes found in the provided data.' == str(exc_info.value)
 
+
+@pytest.mark.usefixtures("requests_mock")
+def test_historical_day_consumption_prefers_consumption_obis(requests_mock: Mocker):
+    z = zaehlpunkt_response([enabled(zaehlpunkt())])[0]
+    zp = z["zaehlpunkte"][0]["zaehlpunktnummer"]
+    customer_id = z["geschaeftspartner"]
+    expect_login(requests_mock)
+    expect_history(
+        requests_mock,
+        customer_id,
+        zp,
+        zaehlwerk_amount=3,
+        all_valid_obis=True,
+    )
+    expect_zaehlpunkte(requests_mock, [enabled(zaehlpunkt())])
+
+    hist = smartmeter().login().historical_day_consumption()
+
+    assert hist["obisCode"] == "1-1:1.9.0"
+    assert requests_mock.request_history[-1].qs["wertetyp"][0].upper() == "DAY"
+
+
+def test_find_valid_obis_data_raises_when_preferred_obis_missing():
+    with pytest.raises(SmartmeterQueryError, match="No preferred OBIS code found"):
+        smartmeter().find_valid_obis_data(
+            [
+                {
+                    "obisCode": "1-1:2.8.0",
+                    "einheit": "WH",
+                    "messwerte": [{"messwert": 1000}],
+                }
+            ],
+            preferred_obis_codes=["1-1:1.9.0", "1-1:1.8.0"],
+        )
+
 @pytest.mark.usefixtures("requests_mock")
 def test_bewegungsdaten_quarterly_hour_consuming(requests_mock: Mocker):
     z = zaehlpunkt_response([enabled(zaehlpunkt())])[0]

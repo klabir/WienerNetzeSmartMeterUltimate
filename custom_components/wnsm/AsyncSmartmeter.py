@@ -110,6 +110,41 @@ class AsyncSmartmeter:
         _LOGGER.debug(f"Raw historical data: {response}")
         return translate_dict(response, ATTRS_HISTORIC_DATA)
 
+    async def get_historic_daily_consumption(
+        self,
+        zaehlpunkt: str,
+        date_from: datetime = None,
+        date_to: datetime = None,
+    ) -> dict[str, any]:
+        """Return daily consumption history from historical data (`wertetyp=DAY`)."""
+        response = await self.hass.async_add_executor_job(
+            self.smartmeter.historical_day_consumption,
+            zaehlpunkt,
+            date_from,
+            date_to,
+        )
+        if "Exception" in response:
+            raise RuntimeError(f"Cannot access daily historic data: {response}")
+        _LOGGER.debug(f"Raw daily historic data: {response}")
+
+        values = []
+        for value in response.get("messwerte", []):
+            quality = str(value.get("qualitaet", "")).upper()
+            values.append(
+                {
+                    "wert": value.get("messwert"),
+                    "zeitpunktVon": value.get("zeitVon"),
+                    "zeitpunktBis": value.get("zeitBis"),
+                    "geschaetzt": quality not in {"", "VAL"},
+                }
+            )
+
+        return {
+            "obisCode": response.get("obisCode"),
+            "unitOfMeasurement": response.get("einheit"),
+            "values": values,
+        }
+
     async def get_meter_reading_from_historic_data(self, zaehlpunkt: str, start_date: datetime, end_date: datetime) -> float:
         """Return daily meter readings from the given start date until today"""
         response = await self.hass.async_add_executor_job(

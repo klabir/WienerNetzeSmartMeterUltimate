@@ -41,6 +41,7 @@ class Importer:
     ):
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
         self.cumulative_id = f"{self.id}_cum_abs"
+        self.daily_consumption_id = f"{self.id}_daily_cons"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
@@ -79,6 +80,19 @@ class Importer:
         )
         return has_required_mean and has_required_sum
 
+    def is_last_inserted_daily_consumption_stat_valid(self, last_inserted_stat):
+        if (
+            self.daily_consumption_id not in last_inserted_stat
+            or len(last_inserted_stat[self.daily_consumption_id]) != 1
+        ):
+            return False
+
+        row = last_inserted_stat[self.daily_consumption_id][0]
+        if "state" not in row or "sum" not in row or "end" not in row:
+            return False
+
+        return row.get("state") is not None and row.get("sum") is not None
+
     @staticmethod
     @lru_cache(maxsize=1)
     def _statistics_metadata_capabilities() -> dict[str, Any]:
@@ -89,6 +103,7 @@ class Importer:
             "unit_class": False,
             "mean_type": False,
             "mean_type_none": 0,
+            "mean_type_arithmetic": 1,
         }
         try:
             from homeassistant.components.recorder.db_schema import StatisticsMeta
@@ -99,12 +114,28 @@ class Importer:
             capabilities["unit_class"] = "unit_class" in columns
             capabilities["mean_type"] = "mean_type" in columns
             if capabilities["mean_type"]:
+                statistic_mean_type = None
                 try:
-                    from homeassistant.components.recorder.models import StatisticMeanType
+                    from homeassistant.components.recorder.models.statistics import (
+                        StatisticMeanType,
+                    )
 
-                    capabilities["mean_type_none"] = StatisticMeanType.NONE
+                    statistic_mean_type = StatisticMeanType
                 except Exception:  # pylint: disable=broad-except
-                    capabilities["mean_type_none"] = 0
+                    try:
+                        from homeassistant.components.recorder.models import StatisticMeanType
+
+                        statistic_mean_type = StatisticMeanType
+                    except Exception:  # pylint: disable=broad-except
+                        statistic_mean_type = None
+
+                if statistic_mean_type is not None:
+                    capabilities["mean_type_none"] = getattr(
+                        statistic_mean_type, "NONE", 0
+                    )
+                    capabilities["mean_type_arithmetic"] = getattr(
+                        statistic_mean_type, "ARITHMETIC", 1
+                    )
         except Exception:  # pylint: disable=broad-except
             # Keep compatibility with older HA cores where these fields do not exist.
             return capabilities
@@ -193,6 +224,9 @@ class Importer:
         async_add_external_statistics(
             self.hass, self.get_cumulative_statistics_metadata(), []
         )
+        async_add_external_statistics(
+            self.hass, self.get_daily_consumption_statistics_metadata(), []
+        )
 
     def prepare_start_off_point(self, last_inserted_stat):
         # Previous data found in the statistics table
@@ -257,11 +291,13 @@ class Importer:
                 start_off_point = self.prepare_start_off_point(last_inserted_stat)
                 if start_off_point is None:
                     await self._backfill_cumulative_from_existing_sum()
+                    await self._import_daily_consumption_statistics()
                     return
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
 
             await self._backfill_cumulative_from_existing_sum()
+            await self._import_daily_consumption_statistics()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
             # If it is set to any number, home assistant will assume that a negative consumption
@@ -281,47 +317,173 @@ class Importer:
         except RuntimeError as e:
             _LOGGER.exception("Error retrieving data from smart meter api - Error: %s" % e)
 
-    def get_statistics_metadata(self):
+    def _build_statistics_metadata(
+        self,
+        statistic_id: str,
+        name: str,
+        has_mean: bool,
+        has_sum: bool,
+    ) -> StatisticMetaData:
         capabilities = self._statistics_metadata_capabilities()
         metadata: dict[str, Any] = {
             "source": DOMAIN,
-            "statistic_id": self.id,
-            "name": self.zaehlpunkt,
+            "statistic_id": statistic_id,
+            "name": name,
             "unit_of_measurement": self.unit_of_measurement,
         }
         if capabilities["has_mean"]:
-            metadata["has_mean"] = False
+            metadata["has_mean"] = has_mean
         if capabilities["has_sum"]:
-            metadata["has_sum"] = True
+            metadata["has_sum"] = has_sum
         if capabilities["unit_class"]:
             metadata["unit_class"] = EnergyConverter.UNIT_CLASS
         if capabilities["mean_type"]:
-            metadata["mean_type"] = capabilities["mean_type_none"]
+            metadata["mean_type"] = (
+                capabilities["mean_type_arithmetic"]
+                if has_mean
+                else capabilities["mean_type_none"]
+            )
         return StatisticMetaData(**metadata)
 
+    def get_statistics_metadata(self):
+        return self._build_statistics_metadata(
+            statistic_id=self.id,
+            name=self.zaehlpunkt,
+            has_mean=False,
+            has_sum=True,
+        )
+
     def get_cumulative_statistics_metadata(self):
-        capabilities = self._statistics_metadata_capabilities()
-        metadata: dict[str, Any] = {
-            "source": DOMAIN,
-            "statistic_id": self.cumulative_id,
-            "name": f"{self.zaehlpunkt} cumulative",
-            "unit_of_measurement": self.unit_of_measurement,
-        }
-        if capabilities["has_mean"]:
-            metadata["has_mean"] = True
-        if capabilities["has_sum"]:
-            metadata["has_sum"] = True
-        if capabilities["unit_class"]:
-            metadata["unit_class"] = EnergyConverter.UNIT_CLASS
-        if capabilities["mean_type"]:
-            metadata["mean_type"] = capabilities["mean_type_none"]
-        return StatisticMetaData(**metadata)
+        return self._build_statistics_metadata(
+            statistic_id=self.cumulative_id,
+            name=f"{self.zaehlpunkt} cumulative",
+            has_mean=True,
+            has_sum=True,
+        )
+
+    def get_daily_consumption_statistics_metadata(self):
+        return self._build_statistics_metadata(
+            statistic_id=self.daily_consumption_id,
+            name=f"{self.zaehlpunkt} daily consumption",
+            has_mean=False,
+            has_sum=True,
+        )
 
     async def _initial_import_statistics(self):
         return await self._import_statistics()
 
     async def _incremental_import_statistics(self, start: datetime, total_usage: Decimal):
         return await self._import_statistics(start=start, total_usage=total_usage)
+
+    @staticmethod
+    def _unit_factor(unit_of_measurement: str) -> float:
+        unit_upper = str(unit_of_measurement).upper()
+        if unit_upper == "WH":
+            return 1e-3
+        if unit_upper == "KWH":
+            return 1.0
+        raise NotImplementedError(
+            f'Unit {unit_upper}" is not yet implemented. Please report!'
+        )
+
+    async def _import_daily_consumption_statistics(
+        self,
+        start: datetime = None,
+        end: datetime = None,
+        total_usage: Decimal = Decimal(0),
+    ) -> Decimal | None:
+        if start is None:
+            last_inserted_stat = await self._get_last_inserted_statistics(
+                self.daily_consumption_id,
+                {"sum", "state"},
+            )
+            if self.is_last_inserted_daily_consumption_stat_valid(last_inserted_stat):
+                row = last_inserted_stat[self.daily_consumption_id][0]
+                start = self._to_datetime(row.get("end"))
+                if start is None:
+                    _LOGGER.warning(
+                        "Skipping incremental import for %s daily consumption due to invalid end timestamp: %s",
+                        self.zaehlpunkt,
+                        row.get("end"),
+                    )
+                    return total_usage
+                total_usage = Decimal(row["sum"])
+            else:
+                start = (
+                    datetime.now(timezone.utc)
+                    .replace(hour=0, minute=0, second=0, microsecond=0)
+                    - timedelta(days=365 * 3)
+                )
+
+        if end is None:
+            end = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        if start.tzinfo is None:
+            raise ValueError("start datetime must be timezone-aware!")
+        if start > end:
+            _LOGGER.warning(
+                "Ignoring daily consumption import since last import happened in the future %s > %s",
+                start,
+                end,
+            )
+            return total_usage
+
+        daily_data = await self.async_smartmeter.get_historic_daily_consumption(
+            self.zaehlpunkt, start, end
+        )
+        values = daily_data.get("values") or []
+        if len(values) == 0:
+            _LOGGER.debug(
+                "Batch of data starting at %s does not contain daily consumption values.",
+                start,
+            )
+            return total_usage
+
+        unit_of_measurement = daily_data.get("unitOfMeasurement")
+        if unit_of_measurement is None:
+            raise ValueError(
+                "WienerNetze returned non-empty daily history without unitOfMeasurement"
+            )
+        factor = self._unit_factor(unit_of_measurement)
+
+        metadata = self.get_daily_consumption_statistics_metadata()
+        statistics: list[StatisticData] = []
+        last_ts = start
+        for value in values:
+            ts = dt_util.parse_datetime(value.get("zeitpunktVon"))
+            if ts is None:
+                continue
+            if ts < last_ts:
+                _LOGGER.warning(
+                    "Timestamp from API (%s) is less than previously collected timestamp (%s), ignoring value!",
+                    ts,
+                    last_ts,
+                )
+                continue
+            last_ts = ts
+            if value.get("wert") is None:
+                continue
+            reading = Decimal(str(value["wert"])) * Decimal(str(factor))
+            total_usage += reading
+            statistics.append(
+                StatisticData(
+                    start=ts,
+                    state=float(reading),
+                    sum=float(total_usage),
+                )
+            )
+
+        if len(statistics) == 0:
+            return total_usage
+
+        _LOGGER.debug(
+            "Importing daily consumption statistics from %s to %s",
+            statistics[0],
+            statistics[-1],
+        )
+        async_add_external_statistics(self.hass, metadata, statistics)
+        return total_usage
 
     async def _import_statistics(self, start: datetime = None, end: datetime = None, total_usage: Decimal = Decimal(0)):
         """Import statistics"""
@@ -354,15 +516,7 @@ class Importer:
             raise ValueError(
                 "WienerNetze returned non-empty bewegungsdaten without unitOfMeasurement"
             )
-        unit_of_measurement = str(unit_of_measurement).upper()
-        if unit_of_measurement == 'WH':
-            factor = 1e-3
-        elif unit_of_measurement == 'KWH':
-            factor = 1.0
-        else:
-            raise NotImplementedError(
-                f'Unit {unit_of_measurement}" is not yet implemented. Please report!'
-            )
+        factor = self._unit_factor(unit_of_measurement)
 
         dates = defaultdict(Decimal)
         total_consumption = sum([v.get("wert", 0) for v in values])
