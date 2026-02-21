@@ -10,6 +10,7 @@ from homeassistant.helpers import selector
 
 from .api import Smartmeter
 from .const import (
+    CONF_ENABLE_DAILY_METER_READ,
     ATTRS_ZAEHLPUNKTE_CALL,
     CONF_ENABLE_DAILY_CONS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
@@ -17,6 +18,7 @@ from .const import (
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
+    DEFAULT_ENABLE_DAILY_METER_READ,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
@@ -126,6 +128,9 @@ def user_schema(default_scan_interval: int):
             vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
             vol.Optional(
                 CONF_ENABLE_DAILY_CONS, default=DEFAULT_ENABLE_DAILY_CONS
+            ): cv.boolean,
+            vol.Optional(
+                CONF_ENABLE_DAILY_METER_READ, default=DEFAULT_ENABLE_DAILY_METER_READ
             ): cv.boolean,
         }
     )
@@ -319,6 +324,16 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                                     ),
                                 ),
                             ): cv.boolean,
+                            vol.Optional(
+                                CONF_ENABLE_DAILY_METER_READ,
+                                default=config_entry.options.get(
+                                    CONF_ENABLE_DAILY_METER_READ,
+                                    config_entry.data.get(
+                                        CONF_ENABLE_DAILY_METER_READ,
+                                        DEFAULT_ENABLE_DAILY_METER_READ,
+                                    ),
+                                ),
+                            ): cv.boolean,
                             vol.Required(
                                 CONF_SELECTED_ZAEHLPUNKTE,
                                 default=current_selected_meters,
@@ -346,6 +361,12 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
             CONF_ENABLE_DAILY_CONS,
             config_entry.data.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS),
         )
+        current_enable_daily_meter_read = config_entry.options.get(
+            CONF_ENABLE_DAILY_METER_READ,
+            config_entry.data.get(
+                CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ
+            ),
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -362,6 +383,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_ENABLE_DAILY_CONS,
                         default=current_enable_daily_cons,
+                    ): cv.boolean,
+                    vol.Optional(
+                        CONF_ENABLE_DAILY_METER_READ,
+                        default=current_enable_daily_meter_read,
                     ): cv.boolean,
                     vol.Required(
                         CONF_SELECTED_ZAEHLPUNKTE,

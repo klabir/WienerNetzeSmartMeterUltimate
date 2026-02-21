@@ -39,6 +39,7 @@ class Importer:
         skip_login: bool = False,
         preloaded_zaehlpunkt: dict | None = None,
         enable_daily_consumption_statistics: bool = True,
+        enable_daily_meter_read_statistics: bool = True,
     ):
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
         self.cumulative_id = f"{self.id}_cum_abs"
@@ -52,6 +53,7 @@ class Importer:
         self.skip_login = skip_login
         self.preloaded_zaehlpunkt = preloaded_zaehlpunkt
         self.enable_daily_consumption_statistics = enable_daily_consumption_statistics
+        self.enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
         self._latest_daily_consumption_day_value: float | None = None
 
     def is_last_inserted_stat_valid(self, last_inserted_stat):
@@ -419,9 +421,10 @@ class Importer:
             async_add_external_statistics(
                 self.hass, self.get_daily_consumption_statistics_metadata(), []
             )
-        async_add_external_statistics(
-            self.hass, self.get_daily_meter_read_statistics_metadata(), []
-        )
+        if self.enable_daily_meter_read_statistics:
+            async_add_external_statistics(
+                self.hass, self.get_daily_meter_read_statistics_metadata(), []
+            )
 
     def prepare_start_off_point(self, last_inserted_stat):
         # Previous data found in the statistics table
@@ -496,8 +499,9 @@ class Importer:
                         daily_consumption_value = (
                             await self._safe_import_daily_consumption_statistics()
                         )
-                    await self._backfill_daily_meter_read_from_existing_rows()
-                    await self._safe_import_daily_meter_read_statistics()
+                    if self.enable_daily_meter_read_statistics:
+                        await self._backfill_daily_meter_read_from_existing_rows()
+                        await self._safe_import_daily_meter_read_statistics()
                     if (
                         self.enable_daily_consumption_statistics
                         and daily_consumption_value is None
@@ -524,8 +528,9 @@ class Importer:
                 daily_consumption_value = (
                     await self._safe_import_daily_consumption_statistics()
                 )
-            await self._backfill_daily_meter_read_from_existing_rows()
-            await self._safe_import_daily_meter_read_statistics()
+            if self.enable_daily_meter_read_statistics:
+                await self._backfill_daily_meter_read_from_existing_rows()
+                await self._safe_import_daily_meter_read_statistics()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
             # If it is set to any number, home assistant will assume that a negative consumption

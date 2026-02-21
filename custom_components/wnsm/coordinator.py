@@ -26,11 +26,13 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         scan_interval_minutes: int,
         enable_raw_api_response_write: bool,
         enable_daily_cons_statistics: bool,
+        enable_daily_meter_read_statistics: bool,
         log_scope: str,
     ) -> None:
         self._zaehlpunkte = zaehlpunkte
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
+        self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
         self._smartmeter = Smartmeter(
             username=username,
             password=password,
@@ -103,6 +105,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         skip_login=True,
                         preloaded_zaehlpunkt=zaehlpunkt_response,
                         enable_daily_consumption_statistics=self._enable_daily_cons_statistics,
+                        enable_daily_meter_read_statistics=self._enable_daily_meter_read_statistics,
                     )
                     importer_result = await importer.async_import()
                     if isinstance(importer_result, dict):

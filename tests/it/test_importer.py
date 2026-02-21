@@ -418,6 +418,27 @@ def test_daily_meter_read_stat_validity_requires_mean_when_supported(monkeypatch
     assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is True
 
 
+def test_ensure_statistics_metadata_skips_daily_meter_read_when_disabled(monkeypatch):
+    calls: list[str] = []
+
+    def _capture(_hass, metadata, _statistics):
+        statistic_id = (
+            metadata.get("statistic_id")
+            if isinstance(metadata, dict)
+            else metadata.statistic_id
+        )
+        calls.append(statistic_id)
+
+    monkeypatch.setattr(importer_module, "async_add_external_statistics", _capture)
+
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+    importer.enable_daily_meter_read_statistics = False
+    importer._ensure_statistics_metadata()
+
+    assert any(statistic_id.endswith("_daily_cons") for statistic_id in calls)
+    assert not any(statistic_id.endswith("_daily_meter_read") for statistic_id in calls)
+
+
 @pytest.mark.asyncio
 async def test_safe_import_daily_consumption_statistics_ignores_errors(monkeypatch, caplog):
     importer = _build_importer(
