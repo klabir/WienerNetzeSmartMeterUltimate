@@ -271,3 +271,26 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
     assert _stat_value(daily_statistics[0], "sum") == pytest.approx(1.0)
     assert _stat_value(daily_statistics[1], "state") == pytest.approx(2.5)
     assert _stat_value(daily_statistics[1], "sum") == pytest.approx(3.5)
+
+
+@pytest.mark.asyncio
+async def test_safe_import_daily_consumption_statistics_ignores_errors(monkeypatch, caplog):
+    importer = _build_importer(
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        }
+    )
+
+    async def _raise_daily_import():
+        raise RuntimeError("daily endpoint unavailable")
+
+    monkeypatch.setattr(
+        importer,
+        "_import_daily_consumption_statistics",
+        _raise_daily_import,
+    )
+
+    await importer._safe_import_daily_consumption_statistics()
+
+    assert "Skipping daily consumption statistics import" in caplog.text

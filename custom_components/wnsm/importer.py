@@ -291,13 +291,13 @@ class Importer:
                 start_off_point = self.prepare_start_off_point(last_inserted_stat)
                 if start_off_point is None:
                     await self._backfill_cumulative_from_existing_sum()
-                    await self._import_daily_consumption_statistics()
+                    await self._safe_import_daily_consumption_statistics()
                     return
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
 
             await self._backfill_cumulative_from_existing_sum()
-            await self._import_daily_consumption_statistics()
+            await self._safe_import_daily_consumption_statistics()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
             # If it is set to any number, home assistant will assume that a negative consumption
@@ -374,6 +374,16 @@ class Importer:
 
     async def _incremental_import_statistics(self, start: datetime, total_usage: Decimal):
         return await self._import_statistics(start=start, total_usage=total_usage)
+
+    async def _safe_import_daily_consumption_statistics(self) -> None:
+        try:
+            await self._import_daily_consumption_statistics()
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Skipping daily consumption statistics import for %s: %s",
+                self.zaehlpunkt,
+                err,
+            )
 
     @staticmethod
     def _unit_factor(unit_of_measurement: str) -> float:

@@ -29,6 +29,7 @@ from .errors import (
 
 logger = logging.getLogger(__name__)
 CONSUMPTION_OBIS_PREFERENCE = ("1-1:1.9.0", "1-1:1.8.0")
+FEEDING_OBIS_PREFERENCE = ("1-1:2.9.0", "1-1:2.8.0")
 
 
 class Smartmeter:
@@ -989,17 +990,44 @@ class Smartmeter:
         """
         Query daily historical consumption with `wertetyp=DAY`.
 
-        This is intentionally pinned to consuming OBIS codes and will fail if only
-        non-consuming OBIS codes are available.
+        Preference is selected by meter type:
+        - consuming meter: 1.9.0 -> 1.8.0
+        - feeding meter: 2.9.0 -> 2.8.0
+
+        If preferred OBIS codes are not present but other valid OBIS codes exist,
+        this falls back to generic valid OBIS selection so imports continue.
         """
-        data = self.historical_data(
-            zaehlpunktnummer=zaehlpunktnummer,
-            date_from=date_from,
-            date_until=date_until,
-            valuetype=const.ValueType.DAY,
-            preferred_obis_codes=list(CONSUMPTION_OBIS_PREFERENCE),
+        _, _, anlagetype = self.get_zaehlpunkt(zaehlpunktnummer)
+        preferred = (
+            list(FEEDING_OBIS_PREFERENCE)
+            if anlagetype == const.AnlagenType.FEEDING
+            else list(CONSUMPTION_OBIS_PREFERENCE)
         )
-        return data
+
+        try:
+            return self.historical_data(
+                zaehlpunktnummer=zaehlpunktnummer,
+                date_from=date_from,
+                date_until=date_until,
+                valuetype=const.ValueType.DAY,
+                preferred_obis_codes=preferred,
+            )
+        except SmartmeterQueryError as err:
+            err_text = str(err)
+            if "No preferred OBIS code found." not in err_text:
+                raise
+
+            logger.warning(
+                "Preferred DAY OBIS codes %s were not found for %s. Falling back to first valid OBIS.",
+                preferred,
+                zaehlpunktnummer if zaehlpunktnummer is not None else "<default>",
+            )
+            return self.historical_data(
+                zaehlpunktnummer=zaehlpunktnummer,
+                date_from=date_from,
+                date_until=date_until,
+                valuetype=const.ValueType.DAY,
+            )
 
     def bewegungsdaten(
         self,
