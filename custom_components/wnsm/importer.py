@@ -98,7 +98,17 @@ class Importer:
         has_required_sum = (
             row.get("sum") is not None if capabilities["has_sum"] else True
         )
-        return row.get("state") is not None and has_required_mean and has_required_sum
+        state_value = row.get("state")
+        sum_value = row.get("sum")
+        if state_value is None:
+            return False
+        try:
+            # _daily_cons is now cumulative (state==sum). This also marks
+            # previously imported daily-delta rows as invalid so backfill upgrades them.
+            state_equals_sum = abs(float(state_value) - float(sum_value)) < 1e-9
+        except (TypeError, ValueError):
+            state_equals_sum = False
+        return has_required_mean and has_required_sum and state_equals_sum
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -250,16 +260,15 @@ class Importer:
         daily_metadata = self.get_daily_consumption_statistics_metadata()
         daily_statistics: list[StatisticData] = []
         for row in rows:
-            row_state = row.get("state")
             row_sum = row.get("sum")
             row_start = self._to_datetime(row.get("start"))
-            if row_state is None or row_sum is None or row_start is None:
+            if row_sum is None or row_start is None:
                 continue
             daily_statistics.append(
                 StatisticData(
                     start=row_start,
-                    state=float(row_state),
-                    mean=float(row_state),
+                    state=float(row_sum),
+                    mean=float(row_sum),
                     sum=float(row_sum),
                 )
             )
@@ -534,12 +543,13 @@ class Importer:
                 continue
             reading = Decimal(str(value["wert"])) * Decimal(str(factor))
             total_usage += reading
+            total_usage_float = float(total_usage)
             statistics.append(
                 StatisticData(
                     start=ts,
-                    state=float(reading),
-                    mean=float(reading),
-                    sum=float(total_usage),
+                    state=total_usage_float,
+                    mean=total_usage_float,
+                    sum=total_usage_float,
                 )
             )
 

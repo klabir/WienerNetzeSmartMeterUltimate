@@ -270,8 +270,8 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
     assert _stat_value(daily_statistics[0], "state") == pytest.approx(1.0)
     assert _stat_value(daily_statistics[0], "mean") == pytest.approx(1.0)
     assert _stat_value(daily_statistics[0], "sum") == pytest.approx(1.0)
-    assert _stat_value(daily_statistics[1], "state") == pytest.approx(2.5)
-    assert _stat_value(daily_statistics[1], "mean") == pytest.approx(2.5)
+    assert _stat_value(daily_statistics[1], "state") == pytest.approx(3.5)
+    assert _stat_value(daily_statistics[1], "mean") == pytest.approx(3.5)
     assert _stat_value(daily_statistics[1], "sum") == pytest.approx(3.5)
 
 
@@ -295,6 +295,9 @@ def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatc
     assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is False
 
     last_inserted[importer.daily_consumption_id][0]["mean"] = 1.23
+    assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is False
+
+    last_inserted[importer.daily_consumption_id][0]["sum"] = 1.23
     assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is True
 
 
