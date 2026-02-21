@@ -65,7 +65,6 @@ class Smartmeter:
         self._code_challenge = None
         self._local_login_args = None
         self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
-        self._raw_api_scope = self._sanitize_filename(log_scope) or "default"
         self._raw_api_response_root = None
         self._raw_api_response_dir = None
         self._raw_api_response_root_candidates = [
@@ -434,7 +433,7 @@ class Smartmeter:
         selected_root = writable_roots[0]
         try:
             self._raw_api_response_root = selected_root
-            self._raw_api_response_dir = os.path.join(selected_root, self._raw_api_scope)
+            self._raw_api_response_dir = selected_root
             os.makedirs(self._raw_api_response_dir, exist_ok=True)
             self._raw_api_log_prepared = True
             self._raw_api_log_prepare_error = None
