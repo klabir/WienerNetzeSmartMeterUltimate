@@ -122,14 +122,10 @@ class Smartmeter:
             raise SmartmeterConnectionError(
                 f"Could not load login page. Error: {result.content}"
             )
-        tree = html.fromstring(result.content)
-        forms = tree.xpath("(//form/@action)")
-        
-        if not forms:
-            raise SmartmeterConnectionError("No form found on the login page.")
-        
-        action = forms[0]
-        return action
+        return self._extract_first_form_action(
+            result.content,
+            "No form found on the login page.",
+        )
 
     def credentials_login(self, url):
         """
@@ -144,8 +140,10 @@ class Smartmeter:
                 },
                 allow_redirects=False,
             )
-            tree = html.fromstring(result.content)
-            action = tree.xpath("(//form/@action)")[0]
+            action = self._extract_first_form_action(
+                result.content,
+                "Could not login with credentials",
+            )
 
             result = self.session.post(
                 action,
@@ -200,9 +198,10 @@ class Smartmeter:
                 f"Could not obtain access token: {result.content}"
             )
         tokens = result.json()
-        if tokens["token_type"] != "Bearer":
+        token_type = tokens.get("token_type")
+        if token_type != "Bearer":
             raise SmartmeterLoginError(
-                f'Bearer token required, but got {tokens["token_type"]!r}'
+                f"Bearer token required, but got {token_type!r}"
             )
         return tokens
 
@@ -233,11 +232,23 @@ class Smartmeter:
 
     def _access_valid_or_raise(self):
         """Checks if the access token is still valid or raises an exception"""
+        if self._access_token is None or self._access_token_expiration is None:
+            raise SmartmeterConnectionError(
+                "Access Token is not valid anymore, please re-log!"
+            )
         if datetime.now() >= self._access_token_expiration:
             # TODO: If the refresh token is still valid, it could be refreshed here
             raise SmartmeterConnectionError(
                 "Access Token is not valid anymore, please re-log!"
             )
+
+    @staticmethod
+    def _extract_first_form_action(content, no_form_error):
+        tree = html.fromstring(content)
+        forms = tree.xpath("(//form/@action)")
+        if not forms:
+            raise SmartmeterConnectionError(no_form_error)
+        return forms[0]
 
     def _get_api_key(self, token):
         self._access_valid_or_raise()
