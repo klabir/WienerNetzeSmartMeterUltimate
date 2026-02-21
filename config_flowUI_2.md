@@ -50,7 +50,7 @@ Implement all config-flow UI changes from `auth_confflow.md`:
 
 ### ConfigFlow class updates
 
-- Added `async_get_options_flow(config_entry)` returning `WienerNetzeSmartMeterOptionsFlow(config_entry)`.
+- Added `async_get_options_flow(config_entry)` returning `WienerNetzeSmartMeterOptionsFlow()` (no constructor args).
 - `async_step_user(...)` now uses `data_schema=user_schema(DEFAULT_SCAN_INTERVAL_MINUTES)`.
 - On successful auth:
   - `self.data = dict(user_input)` (copy, not direct reference)
@@ -62,9 +62,12 @@ Implement all config-flow UI changes from `auth_confflow.md`:
 ### Options flow added
 
 - Class: `WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow)`
+- Constructor pattern for HA 2025.12+ compatibility:
+  - do **not** override `__init__` to inject/store `config_entry`
+  - rely on built-in `OptionsFlow.config_entry` provided by HA
 - Includes legacy-compatible config entry resolution:
   - use `self.config_entry` when present
-  - fallback `self.hass.config_entries.async_get_entry(self.handler)`
+  - fallback `self.hass.config_entries.async_get_entry(self.handler)` for older compatibility path
 - `async_step_init(user_input)` behavior:
   1. If config entry missing: `abort("unknown_error")`
   2. If submitted:
@@ -103,6 +106,8 @@ Added top-level `options.step.init`:
    - `python -m py_compile custom_components/wnsm/config_flow.py`
 2. Translation JSON parse check:
    - parsed `custom_components/wnsm/translations/en.json` successfully
+3. HA options-flow runtime compatibility fix applied:
+   - avoids 500 errors caused by deprecated manual `config_entry` handling in options flow constructors
 
 ## Rebuild checklist for another LLM
 
@@ -112,5 +117,7 @@ Added top-level `options.step.init`:
 4. Replace old username/password-only schema with new `user_schema(...)`.
 5. Keep auth validation flow and active-meter filtering.
 6. Add options flow class with reload-on-save and legacy entry fallback.
-7. Add all translation keys for new user + options fields.
-8. Do **not** implement any runtime local-file logging logic yet.
+7. In `async_get_options_flow`, return `WienerNetzeSmartMeterOptionsFlow()` (no args).
+8. Do not inject `config_entry` in `OptionsFlow.__init__`; use built-in `self.config_entry`.
+9. Add all translation keys for new user + options fields.
+10. Do **not** implement any runtime local-file logging logic yet.
