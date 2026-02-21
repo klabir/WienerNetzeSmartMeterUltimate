@@ -24,10 +24,10 @@ This document specifies the exact logging changes that were implemented so anoth
      - fallback `False`
 2. If enabled:
     - Each API call made via `Smartmeter._call_api()` is written to:
-      - `<selected_root>/<entry_id>/<zaehlpunkt>/*.json`
+      - `<selected_root>/<zaehlpunkt>/*.json`
       - where `<selected_root>` is the first writable candidate:
-        - `/homeassistant/tmp/wnsm_api_calls`
         - `/config/tmp/wnsm_api_calls`
+        - `/homeassistant/tmp/wnsm_api_calls`
         - `/tmp/wnsm_api_calls`
     - Before first write for a client session, the logging root contents are fully cleaned:
       - all files/subfolders under the selected root are removed
@@ -128,15 +128,14 @@ State now comes from `coordinator.data[zaehlpunkt]`:
 Added arg:
 
 - `enable_raw_api_response_write: bool = False`
-- `log_scope: str = "default"`
+- `log_scope: str = "default"` (kept for compatibility, not used for path nesting)
 
 New fields:
 
 - `self._enable_raw_api_response_write`
-- `self._raw_api_scope = <sanitized_log_scope or "default">`
 - `self._raw_api_response_root = None` (set after successful prepare)
 - `self._raw_api_response_dir = None` (set after successful prepare)
-- `self._raw_api_response_root_candidates = ["/homeassistant/tmp/wnsm_api_calls", "/config/tmp/wnsm_api_calls", "/tmp/wnsm_api_calls"]`
+- `self._raw_api_response_root_candidates = ["/config/tmp/wnsm_api_calls", "/homeassistant/tmp/wnsm_api_calls", "/tmp/wnsm_api_calls"]`
 - `self._raw_api_log_prepared = False`
 - `self._raw_api_log_prepare_error = None`
 - `self._raw_api_last_write_error = None`
@@ -164,25 +163,23 @@ New fields:
    - Calls directory preparation once per session via `_prepare_raw_api_response_dir()`.
    - Resolves target meter via `_extract_zaehlpunkt_for_log(endpoint, query, request_body)`.
    - Writes into per-meter subfolder:
-      - `<selected_root>/<sanitized_log_scope>/<sanitized_zaehlpunkt>/`
+      - `<selected_root>/<sanitized_zaehlpunkt>/`
    - Writes pretty JSON file:
       - filename format: `{timestamp}_{method}_{sanitized_endpoint}.json`
    - Returns file path or `None`
 4. `_prepare_raw_api_response_dir()`
     - If already prepared in current session: no-op
     - Else:
-       - iterate fallback roots in this exact order:
-         - `/homeassistant/tmp/wnsm_api_calls`
+       - probe writable roots in this exact order:
          - `/config/tmp/wnsm_api_calls`
+         - `/homeassistant/tmp/wnsm_api_calls`
          - `/tmp/wnsm_api_calls`
-        - for each candidate:
-          - ensure directory exists
-          - write/delete a temporary probe file to verify write access
-          - delete all files/subfolders inside that candidate root
-          - verify root is empty after cleanup; otherwise fail this candidate
-          - create scope dir `<candidate>/<sanitized_log_scope>`
-          - set `self._raw_api_response_root` and `self._raw_api_response_dir`
-          - mark prepared `True` and return
+       - collect all writable roots (probe file create/delete)
+       - cleanup all writable roots (delete all files/subfolders)
+       - select first writable root as active root
+       - set `self._raw_api_response_root = <selected_root>`
+       - set `self._raw_api_response_dir = <selected_root>` (no extra scope folder)
+       - mark prepared `True`
        - if all candidates fail:
          - keep prepared `False`
          - keep root/dir `None`
@@ -286,26 +283,25 @@ When enabled, each JSON file contains:
 Target directory:
 
 - root is first writable of:
-  - `/homeassistant/tmp/wnsm_api_calls`
   - `/config/tmp/wnsm_api_calls`
+  - `/homeassistant/tmp/wnsm_api_calls`
   - `/tmp/wnsm_api_calls`
-- subfolder per entry scope:
-  - `<root>/<entry_id>/`
 - subfolder per meter:
-  - `<root>/<entry_id>/<zaehlpunkt>/`
+  - `<root>/<zaehlpunkt>/`
 - fallback subfolder when no meter is detectable:
-  - `<root>/<entry_id>/general/`
+  - `<root>/general/`
 
 ## Rebuild checklist
 
 1. Add toggle propagation in `sensor.py` from options/data/default.
-2. Build one shared coordinator per entry and pass `log_scope=entry_id`.
+2. Build one shared coordinator per entry.
+   - `log_scope` can still be passed for compatibility, but does not affect file path nesting.
 3. Move per-zp logging attribute assembly into coordinator update data.
 4. Keep sensors as coordinator-backed readers.
 5. Extend `Smartmeter` with:
    - in-memory recent call store
    - optional file writer
-   - scope-aware base log directory
+   - root-only base log directory (no entry/session path nesting)
    - writable-root fallback + startup probe
    - strict root cleanup validation (no silent delete failures)
    - explicit logging status/error surface (`get_raw_api_logging_status`)
