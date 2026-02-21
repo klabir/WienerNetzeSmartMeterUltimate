@@ -29,11 +29,18 @@ class WNSMSensor(SensorEntity):
     def _icon(self) -> str:
         return "mdi:flash"
 
-    def __init__(self, username: str, password: str, zaehlpunkt: str) -> None:
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        zaehlpunkt: str,
+        enable_raw_api_response_write: bool = False,
+    ) -> None:
         super().__init__()
         self.username = username
         self.password = password
         self.zaehlpunkt = zaehlpunkt
+        self.enable_raw_api_response_write = enable_raw_api_response_write
 
         self._attr_native_value: int | float | None = 0
         self._attr_extra_state_attributes = {}
@@ -47,6 +54,17 @@ class WNSMSensor(SensorEntity):
         self._name: str = zaehlpunkt
         self._available: bool = True
         self._updatets: str | None = None
+
+    def _inject_api_log_attributes(self, smartmeter: Smartmeter) -> None:
+        recent_calls = smartmeter.get_recent_api_calls()
+        attributes = dict(self._attr_extra_state_attributes)
+        attributes["raw_api_logging_enabled"] = self.enable_raw_api_response_write
+        attributes["api_call_count"] = len(recent_calls)
+        attributes["recent_api_calls"] = recent_calls[-5:]
+        attributes["last_api_call_file"] = (
+            recent_calls[-1].get("file_path") if len(recent_calls) > 0 else None
+        )
+        self._attr_extra_state_attributes = attributes
 
     @property
     def get_state(self) -> Optional[str]:
@@ -83,7 +101,11 @@ class WNSMSensor(SensorEntity):
         update sensor
         """
         try:
-            smartmeter = Smartmeter(username=self.username, password=self.password)
+            smartmeter = Smartmeter(
+                username=self.username,
+                password=self.password,
+                enable_raw_api_response_write=self.enable_raw_api_response_write,
+            )
             async_smartmeter = AsyncSmartmeter(self.hass, smartmeter)
             await async_smartmeter.login()
             zaehlpunkt_response = await async_smartmeter.get_zaehlpunkt(self.zaehlpunkt)
@@ -97,6 +119,7 @@ class WNSMSensor(SensorEntity):
                     self._attr_native_value = meter_reading
                 importer = Importer(self.hass, async_smartmeter, self.zaehlpunkt, self.unit_of_measurement, self.granularity())
                 await importer.async_import()
+            self._inject_api_log_attributes(smartmeter)
             self._available = True
             self._updatets = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         except TimeoutError as e:

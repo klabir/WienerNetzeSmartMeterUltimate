@@ -28,7 +28,13 @@ logger = logging.getLogger(__name__)
 class Smartmeter:
     """Smartmeter client."""
 
-    def __init__(self, username, password, input_code_verifier=None):
+    def __init__(
+        self,
+        username,
+        password,
+        input_code_verifier=None,
+        enable_raw_api_response_write: bool = False,
+    ):
         """Access the Smartmeter API.
 
         Args:
@@ -52,6 +58,10 @@ class Smartmeter:
         
         self._code_challenge = None
         self._local_login_args = None
+        self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
+        self._raw_api_response_dir = "/config/tmp/wnsm_api_calls"
+        self._recent_api_calls = []
+        self._max_recent_api_calls = 20
 
     def reset(self):
         self.session = requests.Session()
@@ -64,6 +74,7 @@ class Smartmeter:
         self._code_verifier = None
         self._code_challenge = None
         self._local_login_args = None
+        self._recent_api_calls = []
 
     def is_login_expired(self):
         return self._access_token_expiration is not None and datetime.now() >= self._access_token_expiration
@@ -250,6 +261,73 @@ class Smartmeter:
             raise SmartmeterConnectionError(no_form_error)
         return forms[0]
 
+    @staticmethod
+    def _sanitize_filename(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
+
+    @staticmethod
+    def _redact_headers(headers: dict) -> dict:
+        redacted = dict(headers)
+        if "Authorization" in redacted:
+            redacted["Authorization"] = "Bearer ***"
+        if "X-Gateway-APIKey" in redacted:
+            redacted["X-Gateway-APIKey"] = "***"
+        return redacted
+
+    def _write_raw_api_response(self, payload: dict, endpoint: str, method: str) -> str | None:
+        if not self._enable_raw_api_response_write:
+            return None
+        try:
+            os.makedirs(self._raw_api_response_dir, exist_ok=True)
+            safe_endpoint = self._sanitize_filename(endpoint)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"{timestamp}_{method.lower()}_{safe_endpoint}.json"
+            path = os.path.join(self._raw_api_response_dir, filename)
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+            return path
+        except Exception as exception:  # pylint: disable=broad-except
+            logger.warning("Could not write raw API response file: %s", exception)
+            return None
+
+    def _record_api_call(
+        self,
+        method: str,
+        endpoint: str,
+        url: str,
+        query: dict | None,
+        request_body: dict | None,
+        request_headers: dict,
+        response_status: int | None,
+        response_body: Any,
+    ) -> None:
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "method": method,
+            "endpoint": endpoint,
+            "url": url,
+            "query": query,
+            "request_headers": self._redact_headers(request_headers),
+            "request_body": request_body,
+            "response_status": response_status,
+            "response_body": response_body,
+        }
+        file_path = self._write_raw_api_response(payload, endpoint, method)
+        summary = {
+            "timestamp": payload["timestamp"],
+            "method": method,
+            "endpoint": endpoint,
+            "url": url,
+            "response_status": response_status,
+            "file_path": file_path,
+        }
+        self._recent_api_calls.append(summary)
+        if len(self._recent_api_calls) > self._max_recent_api_calls:
+            self._recent_api_calls = self._recent_api_calls[-self._max_recent_api_calls :]
+
+    def get_recent_api_calls(self) -> list[dict]:
+        return list(self._recent_api_calls)
+
     def _get_api_key(self, token):
         self._access_valid_or_raise()
 
@@ -322,14 +400,39 @@ class Smartmeter:
             method, url, headers=headers, json=data, timeout=timeout
         )
 
-        logger.debug("\nAPI Request: %s\n%s\n\nAPI Response: %s" % (
-            url, ("" if data is None else "body: "+json.dumps(data, indent=2)),
-            None if response is None or response.json() is None else json.dumps(response.json(), indent=2)))
+        response_json = None
+        response_text = None
+        try:
+            response_json = response.json()
+        except ValueError:
+            response_text = response.text
+
+        logger.debug(
+            "\nAPI Request: %s\n%s\n\nAPI Response: %s",
+            url,
+            "" if data is None else "body: " + json.dumps(data, indent=2),
+            json.dumps(response_json, indent=2) if response_json is not None else response_text,
+        )
+
+        self._record_api_call(
+            method=method,
+            endpoint=endpoint,
+            url=url,
+            query=query,
+            request_body=data,
+            request_headers=headers,
+            response_status=response.status_code if response is not None else None,
+            response_body=response_json if response_json is not None else response_text,
+        )
 
         if return_response:
             return response
 
-        return response.json()
+        if response_json is not None:
+            return response_json
+        raise SmartmeterConnectionError(
+            f"Could not parse JSON response for endpoint '{endpoint}'"
+        )
 
     def get_zaehlpunkt(self, zaehlpunkt: str = None) -> tuple[str, str, str]:
         contracts = self.zaehlpunkte()
