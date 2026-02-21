@@ -210,6 +210,15 @@ Important note:
 - Historical Day and Historical Hour totals should stay consistent with each other over time.
 - Total Consumption corresponds to the "Zaehlerstand" in the Wiener Netze Smart Meter Portal.
 
+![Total Consumption reset after smart meter hardware exchange](doc/Totalgetsreset.png)
+
+In this example, Wiener Netze Smart Meter hardware was exchanged, and Total Consumption (Zaehlerstand) got reset to zero.
+
+## Energy Dashboard
+
+If you have a Smart Meter hardware exchange, we recommend using statistics with suffix `_daily_meter_read`.
+Otherwise your daily value can be wrong.
+
 ## After Changing Options
 
 After changing options in the integration:
