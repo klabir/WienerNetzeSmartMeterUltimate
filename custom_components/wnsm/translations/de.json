@@ -1,0 +1,49 @@
+{
+  "config": {
+    "error": {
+      "auth": "Benutzername/Passwort ungültig",
+      "connection_error": "Verbindung konnte nicht hergestellt werden",
+      "no_meter_selected": "Wähle mindestens einen Zähler aus"
+    },
+    "flow_title": "Wiener Netze Smartmeter",
+    "step": {
+      "user": {
+        "title": "Wiener Netze Smartmeter Authentifizierung",
+        "description": "Gib deine Wiener Netze Smartmeter Zugangsdaten ein",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "scan_interval": "Abfrageintervall (Minuten)",
+          "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
+          "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
+          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read)."
+        }
+      },
+      "select_meters": {
+        "title": "Zähler auswählen",
+        "description": "Wähle, welche erkannten Zähler als Entitäten erstellt werden sollen.",
+        "data": {
+          "selected_zaehlpunkte": "Zähler"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "no_meter_selected": "Wähle mindestens einen Zähler aus"
+    },
+    "step": {
+      "init": {
+        "title": "Wiener Netze Smartmeter Optionen",
+        "description": "Polling-Verhalten konfigurieren. Speichern lädt die Integration automatisch neu.",
+        "data": {
+          "scan_interval": "Abfrageintervall (Minuten)",
+          "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
+          "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
+          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read).",
+          "selected_zaehlpunkte": "Zähler"
+        }
+      }
+    }
+  }
+}
