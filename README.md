@@ -97,10 +97,118 @@ Show daily value (not cumulative):
 
 ```yaml
 type: tile
-entity: sensor.<zaehlpunkt>_daily_cons_day
+entity: sensor.at0010000000000000001000009111111_daily_cons_day
 vertical: false
 features_position: bottom
 ```
+
+## Dashboard Card Examples
+
+User note:
+- All examples below use the sample `zaehlpunkt` ID `at0010000000000000001000009111111`.
+- Replace `at0010000000000000001000009111111` with your own meter ID in every `entity` / statistics ID.
+
+### Daily Consumption
+
+```yaml
+chart_type: bar
+period: day
+type: statistics-graph
+title: Daily Consumption
+entities:
+  - wnsm:at0010000000000000001000009111111
+hide_legend: true
+stat_types:
+  - change
+```
+
+### Total Consumption per Day from Hourly Historical Sum
+
+```yaml
+chart_type: bar
+period: day
+type: statistics-graph
+title: Total Consumption per Day from Hourly Sum
+days_to_show: 30
+entities:
+  - wnsm:at0010000000000000001000009111111_cum_abs
+stat_types:
+  - state
+hide_legend: true
+```
+
+### Total Consumption per Day from Historical Day Sum
+
+```yaml
+chart_type: bar
+period: day
+type: statistics-graph
+title: Total Consumption per Day from Day Sum
+days_to_show: 30
+entities:
+  - wnsm:at0010000000000000001000009111111_daily_cons
+stat_types:
+  - state
+hide_legend: true
+```
+
+### Total Consumption per Day from Cumulative Total
+
+```yaml
+chart_type: bar
+period: day
+type: statistics-graph
+title: Einspeisung kumuliert (30 Tage)
+days_to_show: 30
+entities:
+  - wnsm:at0010000000000000001000009111111_daily_meter_read
+stat_types:
+  - state
+hide_legend: true
+```
+
+### Yesterday Daily Consumption - Card from Statistics
+
+```yaml
+type: statistic
+entity: sensor.at0010000000000000001000009111111
+period:
+  calendar:
+    period: month
+stat_type: change
+```
+
+### Yesterday Daily Consumption - Tile
+
+```yaml
+type: tile
+entity: sensor.at0010000000000000001000009111111_daily_cons_day
+vertical: false
+features_position: bottom
+```
+
+### Yesterday Total Consumption from Cumulative Total - Tile
+
+```yaml
+type: tile
+entity: sensor.at0010000000000000001000009111111
+vertical: false
+features_position: bottom
+```
+
+### Yesterday Total Consumption from Historical Hourly Sum - Tile
+
+```yaml
+type: tile
+entity: sensor.at0010000000000000001000009111111_daily_cons
+vertical: false
+features_position: bottom
+```
+
+Important note:
+- If the smart meter hardware is replaced (for example due to a defect), totals from Historical Day and Historical Hour can differ from Total Consumption.
+- Historical Day and Historical Hour totals should stay consistent with each other over time.
+- Total Consumption corresponds to the "Zaehlerstand" in the Wiener Netze Smart Meter Portal.
 
 ## After Changing Options
 
