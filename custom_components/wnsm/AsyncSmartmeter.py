@@ -190,11 +190,10 @@ class AsyncSmartmeter:
     ) -> dict[str, any]:
         """Return historical meter reading values (`wertetyp=METER_READ`)."""
         response = await self.hass.async_add_executor_job(
-            self.smartmeter.historical_data,
+            self.smartmeter.historical_meter_reading,
             zaehlpunkt,
             start_date,
             end_date,
-            ValueType.METER_READ
         )
         if "Exception" in response:
             raise RuntimeError(f"Cannot access historic data: {response}")

@@ -30,6 +30,8 @@ from .errors import (
 logger = logging.getLogger(__name__)
 CONSUMPTION_OBIS_PREFERENCE = ("1-1:1.9.0", "1-1:1.8.0")
 FEEDING_OBIS_PREFERENCE = ("1-1:2.9.0", "1-1:2.8.0")
+METER_READ_CONSUMPTION_OBIS_PREFERENCE = ("1-1:1.8.0", "1-1:1.9.0")
+METER_READ_FEEDING_OBIS_PREFERENCE = ("1-1:2.8.0", "1-1:2.9.0")
 
 
 class Smartmeter:
@@ -1027,6 +1029,54 @@ class Smartmeter:
                 date_from=date_from,
                 date_until=date_until,
                 valuetype=const.ValueType.DAY,
+            )
+
+    def historical_meter_reading(
+        self,
+        zaehlpunktnummer: str = None,
+        date_from: date = None,
+        date_until: date = None,
+    ):
+        """
+        Query daily historical meter readings with `wertetyp=METER_READ`.
+
+        Preference is selected by meter type:
+        - consuming meter: 1.8.0 -> 1.9.0
+        - feeding meter: 2.8.0 -> 2.9.0
+
+        If preferred OBIS codes are not present but other valid OBIS codes exist,
+        this falls back to generic valid OBIS selection so imports continue.
+        """
+        _, _, anlagetype = self.get_zaehlpunkt(zaehlpunktnummer)
+        preferred = (
+            list(METER_READ_FEEDING_OBIS_PREFERENCE)
+            if anlagetype == const.AnlagenType.FEEDING
+            else list(METER_READ_CONSUMPTION_OBIS_PREFERENCE)
+        )
+
+        try:
+            return self.historical_data(
+                zaehlpunktnummer=zaehlpunktnummer,
+                date_from=date_from,
+                date_until=date_until,
+                valuetype=const.ValueType.METER_READ,
+                preferred_obis_codes=preferred,
+            )
+        except SmartmeterQueryError as err:
+            err_text = str(err)
+            if "No preferred OBIS code found." not in err_text:
+                raise
+
+            logger.warning(
+                "Preferred METER_READ OBIS codes %s were not found for %s. Falling back to first valid OBIS.",
+                preferred,
+                zaehlpunktnummer if zaehlpunktnummer is not None else "<default>",
+            )
+            return self.historical_data(
+                zaehlpunktnummer=zaehlpunktnummer,
+                date_from=date_from,
+                date_until=date_until,
+                valuetype=const.ValueType.METER_READ,
             )
 
     def bewegungsdaten(
