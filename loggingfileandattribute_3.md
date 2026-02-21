@@ -40,6 +40,7 @@ This document specifies the exact logging changes that were implemented so anoth
       as entries with `response_status = null` and exception text in `response_body`
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
+4. Only when `enable_raw_api_response_write=True`:
    - Sensor attributes are enriched with logging metadata after update.
 4. GET API calls use bounded retry/backoff for transient errors; each failed attempt is still captured in raw logs before retry/raise.
 
@@ -92,7 +93,9 @@ For YAML setup path, creates coordinator with:
 
 ### Logging attributes assembled in coordinator
 
-- `_inject_api_log_attributes(zaehlpunkt, attributes)` filters recent API calls for that zaehlpunkt and writes:
+- `_inject_api_log_attributes(zaehlpunkt, attributes)` returns early when
+  `enable_raw_api_response_write=False`.
+- If enabled, it filters recent API calls for that zaehlpunkt and writes:
   - `raw_api_logging_enabled`
   - `api_call_count`
   - `recent_api_calls` (max 5)
@@ -242,7 +245,7 @@ Updated flow:
 
 ## Attribute schema exposed on sensor
 
-After each successful update, sensor attributes include:
+When `enable_raw_api_response_write=True`, sensor attributes include:
 
 - `raw_api_logging_enabled`: bool
 - `api_call_count`: int
@@ -253,6 +256,8 @@ After each successful update, sensor attributes include:
 - `raw_api_logging_directory`: string path or `None`
 - `raw_api_logging_prepare_error`: string or `None`
 - `raw_api_last_write_error`: string or `None`
+
+When `enable_raw_api_response_write=False`, these logging attributes are not added.
 
 Each `recent_api_calls` item has:
 
