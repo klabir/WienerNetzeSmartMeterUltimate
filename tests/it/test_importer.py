@@ -36,9 +36,18 @@ def _stat_value(statistic_row: object, field: str):
 
 
 class _DummyAsyncSmartmeter:
-    def __init__(self, payload: dict, daily_payload: dict | None = None) -> None:
+    def __init__(
+        self,
+        payload: dict,
+        daily_payload: dict | None = None,
+        meter_read_payload: dict | None = None,
+    ) -> None:
         self._payload = payload
         self._daily_payload = daily_payload or {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        }
+        self._meter_read_payload = meter_read_payload or {
             "unitOfMeasurement": "KWH",
             "values": [],
         }
@@ -49,11 +58,22 @@ class _DummyAsyncSmartmeter:
     async def get_historic_daily_consumption(self, *_args, **_kwargs) -> dict:
         return self._daily_payload
 
+    async def get_meter_reading_history_from_historic_data(
+        self, *_args, **_kwargs
+    ) -> dict:
+        return self._meter_read_payload
 
-def _build_importer(payload: dict, daily_payload: dict | None = None) -> Importer:
+
+def _build_importer(
+    payload: dict,
+    daily_payload: dict | None = None,
+    meter_read_payload: dict | None = None,
+) -> Importer:
     return Importer(
         hass=object(),  # type: ignore[arg-type]
-        async_smartmeter=_DummyAsyncSmartmeter(payload, daily_payload),  # type: ignore[arg-type]
+        async_smartmeter=_DummyAsyncSmartmeter(
+            payload, daily_payload, meter_read_payload
+        ),  # type: ignore[arg-type]
         zaehlpunkt="AT0010000000000000001000011111111",
         unit_of_measurement="kWh",
     )
@@ -275,6 +295,77 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
     assert _stat_value(daily_statistics[1], "sum") == pytest.approx(3.5)
 
 
+@pytest.mark.asyncio
+async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypatch):
+    calls: list[tuple[tuple, dict]] = []
+
+    def _capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(importer_module, "async_add_external_statistics", _capture)
+
+    importer = _build_importer(
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        },
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        },
+        {
+            "unitOfMeasurement": "WH",
+            "values": [
+                {
+                    "messwert": 4444000,
+                    "zeitVon": "2025-01-01T23:00:00Z",
+                    "zeitBis": "2025-01-02T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+                {
+                    "messwert": 4446500,
+                    "zeitVon": "2025-01-02T23:00:00Z",
+                    "zeitBis": "2025-01-03T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+            ],
+        },
+    )
+    start = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    end = dt.datetime(2025, 1, 4, tzinfo=dt.timezone.utc)
+
+    await importer._import_daily_meter_read_statistics(start=start, end=end)
+
+    assert len(calls) == 1
+
+    meter_read_call_args = calls[0][0]
+    meter_read_metadata = meter_read_call_args[1]
+    meter_read_statistics = meter_read_call_args[2]
+    meter_read_statistic_id = (
+        meter_read_metadata.get("statistic_id")
+        if isinstance(meter_read_metadata, dict)
+        else meter_read_metadata.statistic_id
+    )
+    assert meter_read_statistic_id.endswith("_daily_meter_read")
+    if isinstance(meter_read_metadata, dict):
+        if "has_mean" in meter_read_metadata:
+            assert meter_read_metadata["has_mean"] is True
+        if "has_sum" in meter_read_metadata:
+            assert meter_read_metadata["has_sum"] is True
+    else:
+        if hasattr(meter_read_metadata, "has_mean"):
+            assert meter_read_metadata.has_mean is True
+        if hasattr(meter_read_metadata, "has_sum"):
+            assert meter_read_metadata.has_sum is True
+    assert len(meter_read_statistics) == 2
+    assert _stat_value(meter_read_statistics[0], "state") == pytest.approx(4444.0)
+    assert _stat_value(meter_read_statistics[0], "mean") == pytest.approx(4444.0)
+    assert _stat_value(meter_read_statistics[0], "sum") == pytest.approx(4444.0)
+    assert _stat_value(meter_read_statistics[1], "state") == pytest.approx(4446.5)
+    assert _stat_value(meter_read_statistics[1], "mean") == pytest.approx(4446.5)
+    assert _stat_value(meter_read_statistics[1], "sum") == pytest.approx(4446.5)
+
+
 def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatch):
     importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
 
@@ -299,6 +390,31 @@ def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatc
 
     last_inserted[importer.daily_consumption_id][0]["sum"] = 1.23
     assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is True
+
+
+def test_daily_meter_read_stat_validity_requires_mean_when_supported(monkeypatch):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+
+    monkeypatch.setattr(
+        importer,
+        "_statistics_metadata_capabilities",
+        lambda: {"has_mean": True, "has_sum": True},
+    )
+    last_inserted = {
+        importer.daily_meter_read_id: [
+            {
+                "state": 4444.0,
+                "end": "2025-01-02T00:00:00+00:00",
+            }
+        ]
+    }
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is False
+
+    last_inserted[importer.daily_meter_read_id][0]["mean"] = 4444.0
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is False
+
+    last_inserted[importer.daily_meter_read_id][0]["sum"] = 4444.0
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is True
 
 
 @pytest.mark.asyncio

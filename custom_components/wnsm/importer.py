@@ -42,6 +42,7 @@ class Importer:
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
         self.cumulative_id = f"{self.id}_cum_abs"
         self.daily_consumption_id = f"{self.id}_daily_cons"
+        self.daily_meter_read_id = f"{self.id}_daily_meter_read"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
@@ -109,6 +110,26 @@ class Importer:
         except (TypeError, ValueError):
             state_equals_sum = False
         return has_required_mean and has_required_sum and state_equals_sum
+
+    def is_last_inserted_daily_meter_read_stat_valid(self, last_inserted_stat):
+        if (
+            self.daily_meter_read_id not in last_inserted_stat
+            or len(last_inserted_stat[self.daily_meter_read_id]) != 1
+        ):
+            return False
+
+        row = last_inserted_stat[self.daily_meter_read_id][0]
+        if "state" not in row or "end" not in row:
+            return False
+
+        capabilities = self._statistics_metadata_capabilities()
+        has_required_mean = (
+            row.get("mean") is not None if capabilities["has_mean"] else True
+        )
+        has_required_sum = (
+            row.get("sum") is not None if capabilities["has_sum"] else True
+        )
+        return has_required_mean and has_required_sum
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -283,6 +304,60 @@ class Importer:
         )
         async_add_external_statistics(self.hass, daily_metadata, daily_statistics)
 
+    async def _backfill_daily_meter_read_from_existing_rows(self) -> None:
+        """Upgrade daily meter-read stream so rows always carry state/mean/sum."""
+        existing_daily_meter_read = await self._get_last_inserted_statistics(
+            self.daily_meter_read_id, {"state", "mean", "sum"}
+        )
+        if self.is_last_inserted_daily_meter_read_stat_valid(existing_daily_meter_read):
+            return
+
+        rows_by_id = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            datetime(1970, 1, 1, tzinfo=timezone.utc),
+            None,
+            {self.daily_meter_read_id},
+            "hour",
+            None,
+            {"state", "sum"},
+        )
+        rows = rows_by_id.get(self.daily_meter_read_id, [])
+        if not rows:
+            return
+
+        daily_meter_read_metadata = self.get_daily_meter_read_statistics_metadata()
+        daily_meter_read_statistics: list[StatisticData] = []
+        for row in rows:
+            row_value = row.get("state")
+            if row_value is None:
+                row_value = row.get("sum")
+            row_start = self._to_datetime(row.get("start"))
+            if row_value is None or row_start is None:
+                continue
+            daily_meter_read_statistics.append(
+                StatisticData(
+                    start=row_start,
+                    state=float(row_value),
+                    mean=float(row_value),
+                    sum=float(row_value),
+                )
+            )
+
+        if not daily_meter_read_statistics:
+            return
+
+        _LOGGER.info(
+            "Backfilling daily meter-read statistics for %s with %d rows",
+            self.zaehlpunkt,
+            len(daily_meter_read_statistics),
+        )
+        async_add_external_statistics(
+            self.hass,
+            daily_meter_read_metadata,
+            daily_meter_read_statistics,
+        )
+
     def _ensure_statistics_metadata(self) -> None:
         """Ensure metadata is updated for existing statistic IDs across core versions."""
         async_add_external_statistics(self.hass, self.get_statistics_metadata(), [])
@@ -291,6 +366,9 @@ class Importer:
         )
         async_add_external_statistics(
             self.hass, self.get_daily_consumption_statistics_metadata(), []
+        )
+        async_add_external_statistics(
+            self.hass, self.get_daily_meter_read_statistics_metadata(), []
         )
 
     def prepare_start_off_point(self, last_inserted_stat):
@@ -357,14 +435,18 @@ class Importer:
                 if start_off_point is None:
                     await self._backfill_cumulative_from_existing_sum()
                     await self._backfill_daily_consumption_from_existing_rows()
+                    await self._backfill_daily_meter_read_from_existing_rows()
                     await self._safe_import_daily_consumption_statistics()
+                    await self._safe_import_daily_meter_read_statistics()
                     return
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
 
             await self._backfill_cumulative_from_existing_sum()
             await self._backfill_daily_consumption_from_existing_rows()
+            await self._backfill_daily_meter_read_from_existing_rows()
             await self._safe_import_daily_consumption_statistics()
+            await self._safe_import_daily_meter_read_statistics()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
             # If it is set to any number, home assistant will assume that a negative consumption
@@ -436,6 +518,14 @@ class Importer:
             has_sum=True,
         )
 
+    def get_daily_meter_read_statistics_metadata(self):
+        return self._build_statistics_metadata(
+            statistic_id=self.daily_meter_read_id,
+            name=f"{self.zaehlpunkt} daily meter read",
+            has_mean=True,
+            has_sum=True,
+        )
+
     async def _initial_import_statistics(self):
         return await self._import_statistics()
 
@@ -448,6 +538,16 @@ class Importer:
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.warning(
                 "Skipping daily consumption statistics import for %s: %s",
+                self.zaehlpunkt,
+                err,
+            )
+
+    async def _safe_import_daily_meter_read_statistics(self) -> None:
+        try:
+            await self._import_daily_meter_read_statistics()
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.warning(
+                "Skipping daily meter-read statistics import for %s: %s",
                 self.zaehlpunkt,
                 err,
             )
@@ -563,6 +663,112 @@ class Importer:
         )
         async_add_external_statistics(self.hass, metadata, statistics)
         return total_usage
+
+    async def _import_daily_meter_read_statistics(
+        self,
+        start: datetime = None,
+        end: datetime = None,
+    ) -> None:
+        if start is None:
+            last_inserted_stat = await self._get_last_inserted_statistics(
+                self.daily_meter_read_id,
+                {"state", "mean", "sum"},
+            )
+            if self.is_last_inserted_daily_meter_read_stat_valid(last_inserted_stat):
+                row = last_inserted_stat[self.daily_meter_read_id][0]
+                start = self._to_datetime(row.get("end"))
+                if start is None:
+                    _LOGGER.warning(
+                        "Skipping incremental import for %s daily meter read due to invalid end timestamp: %s",
+                        self.zaehlpunkt,
+                        row.get("end"),
+                    )
+                    return
+            else:
+                start = (
+                    datetime.now(timezone.utc)
+                    .replace(hour=0, minute=0, second=0, microsecond=0)
+                    - timedelta(days=365 * 3)
+                )
+
+        if end is None:
+            end = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        if start.tzinfo is None:
+            raise ValueError("start datetime must be timezone-aware!")
+        if start > end:
+            _LOGGER.warning(
+                "Ignoring daily meter-read import since last import happened in the future %s > %s",
+                start,
+                end,
+            )
+            return
+
+        meter_read_data = (
+            await self.async_smartmeter.get_meter_reading_history_from_historic_data(
+                self.zaehlpunkt, start, end
+            )
+        )
+        values = meter_read_data.get("values") or []
+        if len(values) == 0:
+            _LOGGER.debug(
+                "Batch of data starting at %s does not contain daily meter-read values.",
+                start,
+            )
+            return
+
+        unit_of_measurement = meter_read_data.get("unitOfMeasurement")
+        if unit_of_measurement is None:
+            raise ValueError(
+                "WienerNetze returned non-empty meter-read history without unitOfMeasurement"
+            )
+        factor = Decimal(str(self._unit_factor(unit_of_measurement)))
+
+        by_timestamp: dict[datetime, Decimal] = {}
+        for value in values:
+            ts = dt_util.parse_datetime(
+                value.get("zeitpunktVon")
+                or value.get("zeitVon")
+                or value.get("zeitpunktBis")
+                or value.get("zeitBis")
+            )
+            if ts is None:
+                continue
+            raw_value = value.get("wert")
+            if raw_value is None:
+                raw_value = value.get("messwert")
+            if raw_value is None:
+                continue
+            by_timestamp[ts] = Decimal(str(raw_value)) * factor
+
+        if not by_timestamp:
+            return
+
+        metadata = self.get_daily_meter_read_statistics_metadata()
+        statistics: list[StatisticData] = []
+        for ts in sorted(by_timestamp.keys()):
+            if ts < start:
+                continue
+            reading = float(by_timestamp[ts])
+            statistics.append(
+                StatisticData(
+                    start=ts,
+                    state=reading,
+                    mean=reading,
+                    sum=reading,
+                )
+            )
+
+        if len(statistics) == 0:
+            return
+
+        _LOGGER.debug(
+            "Importing daily meter-read statistics from %s to %s",
+            statistics[0],
+            statistics[-1],
+        )
+        async_add_external_statistics(self.hass, metadata, statistics)
 
     async def _import_statistics(self, start: datetime = None, end: datetime = None, total_usage: Decimal = Decimal(0)):
         """Import statistics"""
