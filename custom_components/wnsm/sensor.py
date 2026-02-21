@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
+from .daily_cons_day_sensor import WNSMDailyConsDaySensor
 from .coordinator import WNSMDataUpdateCoordinator
 from .daily_cons_sensor import WNSMDailyConsSensor
 from .wnsm_sensor import WNSMSensor
@@ -127,6 +128,10 @@ async def async_setup_entry(
             WNSMDailyConsSensor(coordinator, zaehlpunkt)
             for zaehlpunkt in zaehlpunkte
         )
+        entities.extend(
+            WNSMDailyConsDaySensor(coordinator, zaehlpunkt)
+            for zaehlpunkt in zaehlpunkte
+        )
     async_add_entities(entities)
 
 
@@ -160,4 +165,5 @@ async def async_setup_platform(
     entities = [wnsm_sensor]
     if bool(config.get(CONF_ENABLE_DAILY_CONS, DEFAULT_ENABLE_DAILY_CONS)):
         entities.append(WNSMDailyConsSensor(coordinator, config[CONF_DEVICE_ID]))
+        entities.append(WNSMDailyConsDaySensor(coordinator, config[CONF_DEVICE_ID]))
     async_add_entities(entities, update_before_add=True)

@@ -52,6 +52,7 @@ class Importer:
         self.skip_login = skip_login
         self.preloaded_zaehlpunkt = preloaded_zaehlpunkt
         self.enable_daily_consumption_statistics = enable_daily_consumption_statistics
+        self._latest_daily_consumption_day_value: float | None = None
 
     def is_last_inserted_stat_valid(self, last_inserted_stat):
         return (
@@ -200,25 +201,19 @@ class Importer:
         self,
         statistic_id: str,
         types: set[str],
+        number_of_stats: int = 1,
     ) -> dict[str, list[dict[str, Any]]]:
         return await get_instance(self.hass).async_add_executor_job(
             get_last_statistics,
             self.hass,
-            1,  # Get at most one entry
+            number_of_stats,
             statistic_id,
             True,  # convert the units
             types,
         )
 
-    async def _get_latest_daily_consumption_value(self) -> float | None:
-        last_inserted_stat = await self._get_last_inserted_statistics(
-            self.daily_consumption_id,
-            {"state", "sum"},
-        )
-        rows = last_inserted_stat.get(self.daily_consumption_id)
-        if not rows:
-            return None
-        row = rows[0]
+    @staticmethod
+    def _stat_row_value(row: dict[str, Any]) -> float | None:
         value = row.get("state")
         if value is None:
             value = row.get("sum")
@@ -228,6 +223,41 @@ class Importer:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    async def _get_latest_daily_consumption_value(self) -> float | None:
+        last_inserted_stat = await self._get_last_inserted_statistics(
+            self.daily_consumption_id,
+            {"state", "sum"},
+        )
+        rows = last_inserted_stat.get(self.daily_consumption_id)
+        if not rows:
+            return None
+        return self._stat_row_value(rows[0])
+
+    async def _get_latest_daily_consumption_day_value(self) -> float | None:
+        last_inserted_stat = await self._get_last_inserted_statistics(
+            self.daily_consumption_id,
+            {"state", "sum"},
+            number_of_stats=2,
+        )
+        rows = last_inserted_stat.get(self.daily_consumption_id)
+        if not rows:
+            return None
+
+        latest_total = self._stat_row_value(rows[0])
+        if latest_total is None:
+            return None
+        if len(rows) < 2:
+            return latest_total
+
+        previous_total = self._stat_row_value(rows[1])
+        if previous_total is None:
+            return latest_total
+
+        day_value = latest_total - previous_total
+        if day_value < 0:
+            return latest_total
+        return day_value
 
     async def _backfill_cumulative_from_existing_sum(self) -> None:
         """Populate cumulative state stream from existing hourly sum stream once."""
@@ -428,6 +458,7 @@ class Importer:
 
     async def async_import(self) -> dict[str, float | None]:
         daily_consumption_value: float | None = None
+        daily_consumption_day_value: float | None = None
         # Query the statistics database for the last value
         # It is crucial to use get_instance here!
         last_inserted_stat = await self._get_last_inserted_statistics(
@@ -445,7 +476,10 @@ class Importer:
 
             if not self.async_smartmeter.is_active(zaehlpunkt):
                 _LOGGER.debug("Smartmeter %s is not active" % zaehlpunkt)
-                return {"daily_consumption_value": None}
+                return {
+                    "daily_consumption_value": None,
+                    "daily_consumption_day_value": None,
+                }
 
             self._ensure_statistics_metadata()
 
@@ -471,7 +505,16 @@ class Importer:
                         daily_consumption_value = (
                             await self._get_latest_daily_consumption_value()
                         )
-                    return {"daily_consumption_value": daily_consumption_value}
+                    if self.enable_daily_consumption_statistics:
+                        daily_consumption_day_value = (
+                            self._latest_daily_consumption_day_value
+                            if self._latest_daily_consumption_day_value is not None
+                            else await self._get_latest_daily_consumption_day_value()
+                        )
+                    return {
+                        "daily_consumption_value": daily_consumption_value,
+                        "daily_consumption_day_value": daily_consumption_day_value,
+                    }
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
 
@@ -499,11 +542,20 @@ class Importer:
             _LOGGER.debug("Last inserted stat: %s", last_inserted_stat)
             if self.enable_daily_consumption_statistics and daily_consumption_value is None:
                 daily_consumption_value = await self._get_latest_daily_consumption_value()
+            if self.enable_daily_consumption_statistics:
+                daily_consumption_day_value = (
+                    self._latest_daily_consumption_day_value
+                    if self._latest_daily_consumption_day_value is not None
+                    else await self._get_latest_daily_consumption_day_value()
+                )
         except TimeoutError as e:
             _LOGGER.warning("Error retrieving data from smart meter api - Timeout: %s" % e)
         except RuntimeError as e:
             _LOGGER.exception("Error retrieving data from smart meter api - Error: %s" % e)
-        return {"daily_consumption_value": daily_consumption_value}
+        return {
+            "daily_consumption_value": daily_consumption_value,
+            "daily_consumption_day_value": daily_consumption_day_value,
+        }
 
     def _build_statistics_metadata(
         self,
@@ -612,6 +664,7 @@ class Importer:
         end: datetime = None,
         total_usage: Decimal = Decimal(0),
     ) -> Decimal | None:
+        self._latest_daily_consumption_day_value = None
         if start is None:
             last_inserted_stat = await self._get_last_inserted_statistics(
                 self.daily_consumption_id,
@@ -670,6 +723,7 @@ class Importer:
         metadata = self.get_daily_consumption_statistics_metadata()
         statistics: list[StatisticData] = []
         last_ts = start
+        latest_daily_usage: float | None = None
         for value in values:
             ts = dt_util.parse_datetime(value.get("zeitpunktVon"))
             if ts is None:
@@ -685,6 +739,7 @@ class Importer:
             if value.get("wert") is None:
                 continue
             reading = Decimal(str(value["wert"])) * Decimal(str(factor))
+            latest_daily_usage = float(reading)
             total_usage += reading
             total_usage_float = float(total_usage)
             statistics.append(
@@ -705,6 +760,7 @@ class Importer:
             statistics[-1],
         )
         async_add_external_statistics(self.hass, metadata, statistics)
+        self._latest_daily_consumption_day_value = latest_daily_usage
         return total_usage
 
     async def _import_daily_meter_read_statistics(

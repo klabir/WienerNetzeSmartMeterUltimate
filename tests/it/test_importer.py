@@ -439,3 +439,89 @@ async def test_safe_import_daily_consumption_statistics_ignores_errors(monkeypat
     await importer._safe_import_daily_consumption_statistics()
 
     assert "Skipping daily consumption statistics import" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_latest_daily_consumption_day_value_uses_latest_when_single_row(
+    monkeypatch,
+):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+
+    async def _fake_get_last_inserted_statistics(
+        _statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        assert number_of_stats == 2
+        return {
+            importer.daily_consumption_id: [
+                {
+                    "state": 3.5,
+                    "sum": 3.5,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        importer, "_get_last_inserted_statistics", _fake_get_last_inserted_statistics
+    )
+
+    assert await importer._get_latest_daily_consumption_day_value() == pytest.approx(3.5)
+
+
+@pytest.mark.asyncio
+async def test_get_latest_daily_consumption_day_value_uses_delta_between_rows(
+    monkeypatch,
+):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+
+    async def _fake_get_last_inserted_statistics(
+        _statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        assert number_of_stats == 2
+        return {
+            importer.daily_consumption_id: [
+                {
+                    "state": 9.0,
+                    "sum": 9.0,
+                },
+                {
+                    "state": 6.5,
+                    "sum": 6.5,
+                },
+            ]
+        }
+
+    monkeypatch.setattr(
+        importer, "_get_last_inserted_statistics", _fake_get_last_inserted_statistics
+    )
+
+    assert await importer._get_latest_daily_consumption_day_value() == pytest.approx(2.5)
+
+
+@pytest.mark.asyncio
+async def test_get_latest_daily_consumption_day_value_falls_back_to_latest_on_negative_delta(
+    monkeypatch,
+):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+
+    async def _fake_get_last_inserted_statistics(
+        _statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        assert number_of_stats == 2
+        return {
+            importer.daily_consumption_id: [
+                {
+                    "state": 1.0,
+                    "sum": 1.0,
+                },
+                {
+                    "state": 3.0,
+                    "sum": 3.0,
+                },
+            ]
+        }
+
+    monkeypatch.setattr(
+        importer, "_get_last_inserted_statistics", _fake_get_last_inserted_statistics
+    )
+
+    assert await importer._get_latest_daily_consumption_day_value() == pytest.approx(1.0)

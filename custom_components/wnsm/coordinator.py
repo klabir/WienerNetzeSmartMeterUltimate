@@ -80,6 +80,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         for zaehlpunkt in self._zaehlpunkte:
             native_value: float | int | None = 0
             daily_cons_value: float | int | None = None
+            daily_cons_day_value: float | int | None = None
             attributes: dict[str, Any] = {}
             available = True
             try:
@@ -106,6 +107,9 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                     importer_result = await importer.async_import()
                     if isinstance(importer_result, dict):
                         daily_cons_value = importer_result.get("daily_consumption_value")
+                        daily_cons_day_value = importer_result.get(
+                            "daily_consumption_day_value"
+                        )
             except Exception as exception:  # pylint: disable=broad-except
                 available = False
                 attributes["last_error"] = str(exception)
@@ -115,6 +119,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             data[zaehlpunkt] = {
                 "native_value": native_value,
                 "daily_cons_value": daily_cons_value,
+                "daily_cons_day_value": daily_cons_day_value,
                 "attributes": attributes,
                 "available": available,
             }
