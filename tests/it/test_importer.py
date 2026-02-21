@@ -131,3 +131,50 @@ async def test_import_statistics_raises_on_unknown_unit_with_values(monkeypatch)
     with pytest.raises(NotImplementedError, match="Unit MWH"):
         await importer._import_statistics(start=start, end=end)
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_import_statistics_emits_mean_for_cumulative_stream(monkeypatch):
+    calls: list[tuple[tuple, dict]] = []
+
+    def _capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(importer_module, "async_add_external_statistics", _capture)
+
+    importer = _build_importer(
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [
+                {
+                    "wert": 1.0,
+                    "zeitpunktVon": "2025-01-01T00:00:00Z",
+                    "zeitpunktBis": "2025-01-01T00:15:00Z",
+                    "geschaetzt": False,
+                },
+                {
+                    "wert": 0.5,
+                    "zeitpunktVon": "2025-01-01T00:15:00Z",
+                    "zeitpunktBis": "2025-01-01T00:30:00Z",
+                    "geschaetzt": False,
+                },
+            ],
+        }
+    )
+    start = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    end = dt.datetime(2025, 1, 2, tzinfo=dt.timezone.utc)
+
+    result = await importer._import_statistics(start=start, end=end)
+
+    assert result == pytest.approx(1.5)
+    assert len(calls) == 2
+
+    cumulative_call_args = calls[1][0]
+    cumulative_metadata = cumulative_call_args[1]
+    cumulative_statistics = cumulative_call_args[2]
+    assert cumulative_metadata.statistic_id.endswith("_cum_abs")
+    if hasattr(cumulative_metadata, "has_mean"):
+        assert cumulative_metadata.has_mean is True
+    assert len(cumulative_statistics) == 1
+    assert cumulative_statistics[0].state == pytest.approx(1.5)
+    assert cumulative_statistics[0].mean == pytest.approx(1.5)

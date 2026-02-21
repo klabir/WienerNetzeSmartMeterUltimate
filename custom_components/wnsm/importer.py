@@ -58,12 +58,22 @@ class Importer:
         )
 
     def is_last_inserted_cumulative_stat_valid(self, last_inserted_stat):
-        return (
-            self.cumulative_id in last_inserted_stat
-            and len(last_inserted_stat[self.cumulative_id]) == 1
-            and "state" in last_inserted_stat[self.cumulative_id][0]
-            and "end" in last_inserted_stat[self.cumulative_id][0]
-        )
+        if (
+            self.cumulative_id not in last_inserted_stat
+            or len(last_inserted_stat[self.cumulative_id]) != 1
+        ):
+            return False
+
+        row = last_inserted_stat[self.cumulative_id][0]
+        if "state" not in row or "end" not in row:
+            return False
+
+        # Daily statistics-graph rendering is most reliable when this stream
+        # also carries mean values, so old state-only rows should be upgraded.
+        if self._statistics_metadata_capabilities()["has_mean"]:
+            return row.get("mean") is not None
+
+        return True
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -128,7 +138,7 @@ class Importer:
     async def _backfill_cumulative_from_existing_sum(self) -> None:
         """Populate cumulative state stream from existing hourly sum stream once."""
         existing_cumulative = await self._get_last_inserted_statistics(
-            self.cumulative_id, {"state"}
+            self.cumulative_id, {"state", "mean"}
         )
         if self.is_last_inserted_cumulative_stat_valid(existing_cumulative):
             return
@@ -158,6 +168,7 @@ class Importer:
                 StatisticData(
                     start=row_start,
                     state=float(row_sum),
+                    mean=float(row_sum),
                 )
             )
 
@@ -292,7 +303,7 @@ class Importer:
             "unit_of_measurement": self.unit_of_measurement,
         }
         if capabilities["has_mean"]:
-            metadata["has_mean"] = False
+            metadata["has_mean"] = True
         if capabilities["has_sum"]:
             metadata["has_sum"] = False
         if capabilities["unit_class"]:
@@ -389,7 +400,11 @@ class Importer:
                 StatisticData(start=ts, sum=total_usage_float, state=float(usage))
             )
             cumulative_statistics.append(
-                StatisticData(start=ts, state=total_usage_float)
+                StatisticData(
+                    start=ts,
+                    state=total_usage_float,
+                    mean=total_usage_float,
+                )
             )
         if len(statistics) > 0:
             _LOGGER.debug(f"Importing statistics from {statistics[0]} to {statistics[-1]}")
