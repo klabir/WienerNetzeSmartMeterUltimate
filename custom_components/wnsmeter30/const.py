@@ -1,7 +1,7 @@
 """
     component constants
 """
-DOMAIN = "wnsm"
+DOMAIN = "wnsmeter30"
 
 CONF_ZAEHLPUNKTE = "zaehlpunkte"
 CONF_SELECTED_ZAEHLPUNKTE = "selected_zaehlpunkte"

@@ -5,11 +5,11 @@
       "connection_error": "Verbindung konnte nicht hergestellt werden",
       "no_meter_selected": "Wähle mindestens einen Zähler aus"
     },
-    "flow_title": "Wiener Netze Smartmeter",
+    "flow_title": "WienerNetzeSmartmeter 3.0",
     "step": {
       "user": {
-        "title": "Wiener Netze Smartmeter Authentifizierung",
-        "description": "Gib deine Wiener Netze Smartmeter Zugangsdaten ein",
+        "title": "WienerNetzeSmartmeter 3.0 Authentifizierung",
+        "description": "Gib deine WienerNetzeSmartmeter 3.0 Zugangsdaten ein",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
@@ -34,7 +34,7 @@
     },
     "step": {
       "init": {
-        "title": "Wiener Netze Smartmeter Optionen",
+        "title": "WienerNetzeSmartmeter 3.0 Optionen",
         "description": "Polling-Verhalten konfigurieren. Speichern lädt die Integration automatisch neu.",
         "data": {
           "scan_interval": "Abfrageintervall (Minuten)",

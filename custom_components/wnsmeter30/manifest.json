@@ -1,6 +1,6 @@
 {
-    "domain": "wnsm",
-    "name": "WienerNetzeSmartmeter",
+    "domain": "wnsmeter30",
+    "name": "WienerNetzeSmartmeter 3.0",
     "codeowners": [
         "@DarwinsBuddy"
     ],

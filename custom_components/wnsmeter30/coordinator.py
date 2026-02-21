@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api import Smartmeter
+from .const import DOMAIN
 from .importer import Importer
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         super().__init__(
             hass,
             _LOGGER,
-            name="wnsm",
+            name=DOMAIN,
             update_interval=timedelta(minutes=scan_interval_minutes),
         )
 

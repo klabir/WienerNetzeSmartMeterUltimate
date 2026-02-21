@@ -24,9 +24,9 @@ if "fnv_hash_fast" not in sys.modules:
     fnv_stub.fnv1a_32 = _fnv1a_32
     sys.modules["fnv_hash_fast"] = fnv_stub
 
-import it  # noqa: F401  # Ensures custom_components path is available for wnsm imports
-from wnsm import importer as importer_module
-from wnsm.importer import Importer
+import it  # noqa: F401  # Ensures custom_components path is available for wnsmeter30 imports
+from wnsmeter30 import importer as importer_module
+from wnsmeter30.importer import Importer
 
 
 def _stat_value(statistic_row: object, field: str):

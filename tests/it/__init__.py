@@ -17,8 +17,8 @@ from test_resources import post_data_matcher
 # necessary for pytest-cov to measure coverage
 myPath = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, myPath + '/../../custom_components')
-from wnsm import api  # noqa: E402
-from wnsm.api.constants import ValueType, AnlagenType, RoleType  # noqa: E402
+from wnsmeter30 import api  # noqa: E402
+from wnsmeter30.api.constants import ValueType, AnlagenType, RoleType  # noqa: E402
 
 
 def _dt_string(datetime_string):

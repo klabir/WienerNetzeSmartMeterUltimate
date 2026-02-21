@@ -26,8 +26,8 @@ from it import (
     mock_get_api_key,
     expect_history, expect_bewegungsdaten, zaehlpunkt_response,
 )
-from wnsm.api.errors import SmartmeterConnectionError, SmartmeterLoginError, SmartmeterQueryError
-import wnsm.api.constants as const
+from wnsmeter30.api.errors import SmartmeterConnectionError, SmartmeterLoginError, SmartmeterQueryError
+import wnsmeter30.api.constants as const
 
 COUNT = 10
 

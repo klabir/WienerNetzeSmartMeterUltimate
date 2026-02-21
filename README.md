@@ -52,10 +52,10 @@ For each selected meter, these statistic IDs are used:
 
 | Statistic ID pattern | Default | Controlled by |
 | --- | --- | --- |
-| `wnsm:<zaehlpunkt_lowercase>` | Enabled | Always on |
-| `wnsm:<zaehlpunkt_lowercase>_cum_abs` | Enabled | Always on |
-| `wnsm:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
-| `wnsm:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>` | Enabled | Always on |
+| `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Enabled | Always on |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).` |
 
 ## Configuration Defaults
 
@@ -75,7 +75,7 @@ When enabled (default):
   - `sensor.<zaehlpunkt>_daily_cons`
   - `sensor.<zaehlpunkt>_daily_cons_day`
 - Imports/maintains statistics stream:
-  - `wnsm:<zaehlpunkt_lowercase>_daily_cons`
+  - `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons`
 
 When disabled:
 - The two `_daily_cons*` sensors are not created.
@@ -85,7 +85,7 @@ When disabled:
 
 When enabled (default):
 - Imports/maintains statistics stream:
-  - `wnsm:<zaehlpunkt_lowercase>_daily_meter_read`
+  - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read`
 
 When disabled:
 - No new `_daily_meter_read` statistics are imported.
@@ -116,7 +116,7 @@ period: day
 type: statistics-graph
 title: Daily Consumption
 entities:
-  - wnsm:at0010000000000000001000009111111
+  - wnsmeter30:at0010000000000000001000009111111
 hide_legend: true
 stat_types:
   - change
@@ -131,7 +131,7 @@ type: statistics-graph
 title: Total Consumption per Day from Hourly Sum
 days_to_show: 30
 entities:
-  - wnsm:at0010000000000000001000009111111_cum_abs
+  - wnsmeter30:at0010000000000000001000009111111_cum_abs
 stat_types:
   - state
 hide_legend: true
@@ -146,7 +146,7 @@ type: statistics-graph
 title: Total Consumption per Day from Day Sum
 days_to_show: 30
 entities:
-  - wnsm:at0010000000000000001000009111111_daily_cons
+  - wnsmeter30:at0010000000000000001000009111111_daily_cons
 stat_types:
   - state
 hide_legend: true
@@ -161,7 +161,7 @@ type: statistics-graph
 title: Einspeisung kumuliert (30 Tage)
 days_to_show: 30
 entities:
-  - wnsm:at0010000000000000001000009111111_daily_meter_read
+  - wnsmeter30:at0010000000000000001000009111111_daily_meter_read
 stat_types:
   - state
 hide_legend: true

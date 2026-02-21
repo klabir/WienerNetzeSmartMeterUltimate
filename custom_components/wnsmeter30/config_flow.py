@@ -227,7 +227,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
             else:
                 self.data[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
                 return self.async_create_entry(
-                    title="Wiener Netze Smartmeter", data=self.data
+                    title="WienerNetzeSmartmeter 3.0", data=self.data
                 )
 
         return self.async_show_form(

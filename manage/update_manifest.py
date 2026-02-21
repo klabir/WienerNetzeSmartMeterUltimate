@@ -12,14 +12,14 @@ def update_manifest():
             version = sys.argv[index + 1]
 
     with open(
-        f"{os.getcwd()}/custom_components/wnsm/manifest.json", encoding="utf-8"
+        f"{os.getcwd()}/custom_components/wnsmeter30/manifest.json", encoding="utf-8"
     ) as manifestfile:
         manifest = json.load(manifestfile)
 
     manifest["version"] = version
 
     with open(
-        f"{os.getcwd()}/custom_components/wnsm/manifest.json", "w", encoding="utf-8"
+        f"{os.getcwd()}/custom_components/wnsmeter30/manifest.json", "w", encoding="utf-8"
     ) as manifestfile:
         manifestfile.write(json.dumps(manifest, indent=4, sort_keys=True))
 
