@@ -116,6 +116,9 @@ Added top-level `options.step.init`:
    - `enable_raw_api_response_write` is forwarded into shared Smartmeter client
 5. Auth hardening compatibility check:
    - no schema/translation/options-flow contract changes required for refresh-token or API status handling updates
+6. Retry/backoff + importer dedup compatibility check:
+   - no additional config-flow schema/options changes required
+   - runtime behavior only (API client + coordinator/importer path)
 
 ## Runtime contract (must exist for first-time-right implementation)
 

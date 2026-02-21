@@ -18,11 +18,11 @@ This file documents the authentication changes and the later runtime wiring upda
 
 ## Exact changes
 
-### 1) Centralized first form action extraction
+### 1) Centralized first form action extraction with URL normalization
 
 Added helper method:
 
-- `Smartmeter._extract_first_form_action(content, no_form_error)`
+- `Smartmeter._extract_first_form_action(content, no_form_error, base_url=None)`
 
 Behavior:
 
@@ -30,7 +30,8 @@ Behavior:
 2. Extract form actions with XPath `(//form/@action)`.
 3. If no form exists, raise:
    - `SmartmeterConnectionError(no_form_error)`
-4. Return first action URL (`forms[0]`).
+4. Normalize action URL with `urljoin(base_url, action)` when `base_url` is provided.
+5. Return resolved action URL.
 
 ### 2) `load_login_page()` now uses helper
 
@@ -40,7 +41,7 @@ Before:
 
 Now:
 
-- Calls `_extract_first_form_action(result.content, "No form found on the login page.")`.
+- Calls `_extract_first_form_action(result.content, "No form found on the login page.", result.url)`.
 
 Net effect:
 
@@ -54,7 +55,7 @@ Before:
 
 Now:
 
-- Calls `_extract_first_form_action(result.content, "Could not login with credentials")`.
+- Calls `_extract_first_form_action(result.content, "Could not login with credentials", result.url)`.
 
 Net effect:
 
@@ -160,6 +161,19 @@ Behavior:
 
 This is called in `_call_api()` after response parsing and logging capture.
 
+### 9.1) GET retry/backoff + API-key refresh fallback
+
+`_call_api()` now adds bounded retries for idempotent calls:
+
+1. Applies to `GET` only.
+2. Up to 3 attempts with jittered sleep.
+3. Retries transient failures:
+   - request exceptions
+   - HTTP `429/500/502/503/504`
+4. On first `401/403` in a retryable call:
+   - re-fetch gateway keys via `_get_api_key(_access_token)`
+   - retry once with updated API key headers.
+
 ### 10) Auth network calls now use explicit timeouts
 
 Added `timeout=60.0` in:
@@ -189,10 +203,30 @@ Net effect:
 
 - endpoint intent matches method name and avoids wrong payload mapping.
 
+### 12) Coordinator/importer dedup path to reduce repeated auth/API calls
+
+Files:
+
+- `custom_components/wnsm/importer.py`
+- `custom_components/wnsm/coordinator.py`
+
+Changes:
+
+1. `Importer` supports:
+   - `skip_login: bool = False`
+   - `preloaded_zaehlpunkt: dict | None = None`
+2. Coordinator now passes:
+   - `skip_login=True`
+   - `preloaded_zaehlpunkt=<already fetched zp response>`
+
+Net effect:
+
+- Avoids redundant `login()` and `get_zaehlpunkt()` inside importer during coordinator update cycle.
+
 ## Rebuild checklist for another LLM
 
 1. Edit only `custom_components/wnsm/api/client.py`.
-2. Add `_extract_first_form_action(content, no_form_error)` static method in `Smartmeter`.
+2. Add `_extract_first_form_action(content, no_form_error, base_url=None)` static method in `Smartmeter`.
 3. Replace inline form parsing in:
    - `load_login_page()`
    - `credentials_login()`
@@ -204,8 +238,10 @@ Net effect:
 8. Implement runtime usage with a shared coordinator-backed client per config entry.
 9. Implement refresh token flow and use it in `login()` + `_access_valid_or_raise()`.
 10. Add centralized HTTP status->exception mapping in `_call_api()`.
-11. Add explicit timeouts for all auth-related HTTP calls.
-12. In `AsyncSmartmeter.get_meter_readings()`, call `meter_readings` instead of `historical_data`.
+11. Add GET-only retry/backoff for transient failures and API-key refresh retry on first 401/403.
+12. Add explicit timeouts for all auth-related HTTP calls.
+13. In `AsyncSmartmeter.get_meter_readings()`, call `meter_readings` instead of `historical_data`.
+14. Add importer/coordinator dedup path (`skip_login`, `preloaded_zaehlpunkt`).
 
 ## Post-change verification done
 

@@ -31,6 +31,7 @@ This document specifies the exact logging changes that were implemented so anoth
 3. Always:
    - A recent API call summary list is kept in-memory on `Smartmeter`.
    - Sensor attributes are enriched with logging metadata after update.
+4. GET API calls use bounded retry/backoff for transient errors; each failed attempt is still captured in raw logs before retry/raise.
 
 ## File-by-file changes
 
@@ -75,6 +76,9 @@ For YAML setup path, creates coordinator with:
 - Login happens once per cycle for the shared client.
 - Loops all configured zaehlpunkte and stores per-zp state in `coordinator.data`.
 - Imports statistics via existing `Importer` per zaehlpunkt.
+- Passes importer dedup hints:
+  - `skip_login=True`
+  - `preloaded_zaehlpunkt=<coordinator-fetched zp response>`
 
 ### Logging attributes assembled in coordinator
 
@@ -137,7 +141,7 @@ New fields:
    - Calls directory preparation once per session via `_prepare_raw_api_response_dir()`.
    - Resolves target meter via `_extract_zaehlpunkt_for_log(endpoint, query, request_body)`.
    - Writes into per-meter subfolder:
-     - `/config/tmp/wnsm_api_calls/<sanitized_zaehlpunkt>/`
+     - `/config/tmp/wnsm_api_calls/<sanitized_log_scope>/<sanitized_zaehlpunkt>/`
    - Writes pretty JSON file:
       - filename format: `{timestamp}_{method}_{sanitized_endpoint}.json`
    - Returns file path or `None`
@@ -178,11 +182,15 @@ Updated flow:
    - fallback to `response.text` when non-JSON
 3. Keep debug logging.
 4. Call `_record_api_call(...)` with request/response details.
-5. Apply centralized status handling:
+5. For `GET`, retry up to 3 attempts with jitter on:
+   - request exceptions
+   - `429/500/502/503/504`
+   - first `401/403` can trigger gateway key refresh + retry
+6. Apply centralized status handling:
    - 401/403 -> `SmartmeterLoginError`
    - other 4xx/5xx -> `SmartmeterConnectionError`
    - includes endpoint + status + response payload in exception message
-6. Return behavior:
+7. Return behavior:
    - if `return_response=True`, return raw `response`
    - else return parsed JSON when available
    - else raise:
@@ -244,7 +252,8 @@ Target directory:
    - one-time recursive cleanup of scope directory before first write
    - `_call_api` record hook
 6. Ensure sensitive headers are redacted in persisted payload.
-7. Keep existing API auth and statistics logic unchanged except wiring/logging additions.
+7. Add GET-only retry/backoff in `_call_api` while keeping exception mapping intact.
+8. Keep existing API auth and statistics logic unchanged except wiring/logging additions.
 
 ## Verification performed
 
