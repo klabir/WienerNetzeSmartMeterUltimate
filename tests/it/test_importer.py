@@ -258,19 +258,44 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
     assert daily_statistic_id.endswith("_daily_cons")
     if isinstance(daily_metadata, dict):
         if "has_mean" in daily_metadata:
-            assert daily_metadata["has_mean"] is False
+            assert daily_metadata["has_mean"] is True
         if "has_sum" in daily_metadata:
             assert daily_metadata["has_sum"] is True
     else:
         if hasattr(daily_metadata, "has_mean"):
-            assert daily_metadata.has_mean is False
+            assert daily_metadata.has_mean is True
         if hasattr(daily_metadata, "has_sum"):
             assert daily_metadata.has_sum is True
     assert len(daily_statistics) == 2
     assert _stat_value(daily_statistics[0], "state") == pytest.approx(1.0)
+    assert _stat_value(daily_statistics[0], "mean") == pytest.approx(1.0)
     assert _stat_value(daily_statistics[0], "sum") == pytest.approx(1.0)
     assert _stat_value(daily_statistics[1], "state") == pytest.approx(2.5)
+    assert _stat_value(daily_statistics[1], "mean") == pytest.approx(2.5)
     assert _stat_value(daily_statistics[1], "sum") == pytest.approx(3.5)
+
+
+def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatch):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+
+    monkeypatch.setattr(
+        importer,
+        "_statistics_metadata_capabilities",
+        lambda: {"has_mean": True, "has_sum": True},
+    )
+    last_inserted = {
+        importer.daily_consumption_id: [
+            {
+                "state": 1.23,
+                "sum": 4.56,
+                "end": "2025-01-02T00:00:00+00:00",
+            }
+        ]
+    }
+    assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is False
+
+    last_inserted[importer.daily_consumption_id][0]["mean"] = 1.23
+    assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is True
 
 
 @pytest.mark.asyncio

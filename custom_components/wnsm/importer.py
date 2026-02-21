@@ -91,7 +91,14 @@ class Importer:
         if "state" not in row or "sum" not in row or "end" not in row:
             return False
 
-        return row.get("state") is not None and row.get("sum") is not None
+        capabilities = self._statistics_metadata_capabilities()
+        has_required_mean = (
+            row.get("mean") is not None if capabilities["has_mean"] else True
+        )
+        has_required_sum = (
+            row.get("sum") is not None if capabilities["has_sum"] else True
+        )
+        return row.get("state") is not None and has_required_mean and has_required_sum
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -218,6 +225,55 @@ class Importer:
         )
         async_add_external_statistics(self.hass, cumulative_metadata, cumulative_statistics)
 
+    async def _backfill_daily_consumption_from_existing_rows(self) -> None:
+        """Upgrade daily consumption stream so rows always carry state/mean/sum."""
+        existing_daily = await self._get_last_inserted_statistics(
+            self.daily_consumption_id, {"state", "mean", "sum"}
+        )
+        if self.is_last_inserted_daily_consumption_stat_valid(existing_daily):
+            return
+
+        rows_by_id = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            datetime(1970, 1, 1, tzinfo=timezone.utc),
+            None,
+            {self.daily_consumption_id},
+            "hour",
+            None,
+            {"state", "sum"},
+        )
+        rows = rows_by_id.get(self.daily_consumption_id, [])
+        if not rows:
+            return
+
+        daily_metadata = self.get_daily_consumption_statistics_metadata()
+        daily_statistics: list[StatisticData] = []
+        for row in rows:
+            row_state = row.get("state")
+            row_sum = row.get("sum")
+            row_start = self._to_datetime(row.get("start"))
+            if row_state is None or row_sum is None or row_start is None:
+                continue
+            daily_statistics.append(
+                StatisticData(
+                    start=row_start,
+                    state=float(row_state),
+                    mean=float(row_state),
+                    sum=float(row_sum),
+                )
+            )
+
+        if not daily_statistics:
+            return
+
+        _LOGGER.info(
+            "Backfilling daily consumption statistics for %s with %d rows",
+            self.zaehlpunkt,
+            len(daily_statistics),
+        )
+        async_add_external_statistics(self.hass, daily_metadata, daily_statistics)
+
     def _ensure_statistics_metadata(self) -> None:
         """Ensure metadata is updated for existing statistic IDs across core versions."""
         async_add_external_statistics(self.hass, self.get_statistics_metadata(), [])
@@ -291,12 +347,14 @@ class Importer:
                 start_off_point = self.prepare_start_off_point(last_inserted_stat)
                 if start_off_point is None:
                     await self._backfill_cumulative_from_existing_sum()
+                    await self._backfill_daily_consumption_from_existing_rows()
                     await self._safe_import_daily_consumption_statistics()
                     return
                 start, _sum = start_off_point
                 _sum = await self._incremental_import_statistics(start, _sum)
 
             await self._backfill_cumulative_from_existing_sum()
+            await self._backfill_daily_consumption_from_existing_rows()
             await self._safe_import_daily_consumption_statistics()
 
             # XXX: Note that the state of this sensor must never be an integer value, such as 0!
@@ -365,7 +423,7 @@ class Importer:
         return self._build_statistics_metadata(
             statistic_id=self.daily_consumption_id,
             name=f"{self.zaehlpunkt} daily consumption",
-            has_mean=False,
+            has_mean=True,
             has_sum=True,
         )
 
@@ -405,7 +463,7 @@ class Importer:
         if start is None:
             last_inserted_stat = await self._get_last_inserted_statistics(
                 self.daily_consumption_id,
-                {"sum", "state"},
+                {"state", "mean", "sum"},
             )
             if self.is_last_inserted_daily_consumption_stat_valid(last_inserted_stat):
                 row = last_inserted_stat[self.daily_consumption_id][0]
@@ -480,6 +538,7 @@ class Importer:
                 StatisticData(
                     start=ts,
                     state=float(reading),
+                    mean=float(reading),
                     sum=float(total_usage),
                 )
             )
