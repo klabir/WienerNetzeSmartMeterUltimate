@@ -318,7 +318,7 @@ async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypa
             "values": [
                 {
                     "messwert": 4444000,
-                    "zeitVon": "2025-01-01T23:00:00Z",
+                    "zeitVon": "2025-01-01T23:00:11Z",
                     "zeitBis": "2025-01-02T23:00:00Z",
                     "qualitaet": "VAL",
                 },
@@ -358,6 +358,7 @@ async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypa
         if hasattr(meter_read_metadata, "has_sum"):
             assert meter_read_metadata.has_sum is True
     assert len(meter_read_statistics) == 2
+    assert _stat_value(meter_read_statistics[0], "start").second == 0
     assert _stat_value(meter_read_statistics[0], "state") == pytest.approx(4444.0)
     assert _stat_value(meter_read_statistics[0], "mean") == pytest.approx(4444.0)
     assert _stat_value(meter_read_statistics[0], "sum") == pytest.approx(4444.0)

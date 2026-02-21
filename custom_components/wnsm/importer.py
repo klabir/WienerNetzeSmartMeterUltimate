@@ -725,38 +725,58 @@ class Importer:
             )
         factor = Decimal(str(self._unit_factor(unit_of_measurement)))
 
-        by_timestamp: dict[datetime, Decimal] = {}
+        daily_points: dict[Any, tuple[datetime, Decimal]] = {}
         for value in values:
-            ts = dt_util.parse_datetime(
+            raw_ts = dt_util.parse_datetime(
                 value.get("zeitpunktVon")
                 or value.get("zeitVon")
                 or value.get("zeitpunktBis")
                 or value.get("zeitBis")
             )
-            if ts is None:
+            if raw_ts is None:
                 continue
+            ts = dt_util.as_utc(raw_ts)
+            if ts < start:
+                continue
+            # Recorder statistics expect normalized boundaries.
+            ts = ts.replace(minute=0, second=0, microsecond=0)
             raw_value = value.get("wert")
             if raw_value is None:
                 raw_value = value.get("messwert")
             if raw_value is None:
                 continue
-            by_timestamp[ts] = Decimal(str(raw_value)) * factor
+            reading = Decimal(str(raw_value)) * factor
+            day_key = dt_util.as_local(raw_ts).date()
+            previous = daily_points.get(day_key)
+            if previous is None or ts > previous[0]:
+                daily_points[day_key] = (ts, reading)
 
-        if not by_timestamp:
+        if not daily_points:
             return
 
         metadata = self.get_daily_meter_read_statistics_metadata()
         statistics: list[StatisticData] = []
-        for ts in sorted(by_timestamp.keys()):
-            if ts < start:
-                continue
-            reading = float(by_timestamp[ts])
+        previous_reading: float | None = None
+        running_sum: float | None = None
+        for day_key in sorted(daily_points.keys()):
+            ts, reading_value = daily_points[day_key]
+            reading = float(reading_value)
+            if running_sum is None:
+                running_sum = reading
+            else:
+                delta = 0.0 if previous_reading is None else reading - previous_reading
+                if delta < 0:
+                    # Meter replacements/resets can produce lower absolute reads.
+                    # Keep sum monotonic so recorder accepts the statistics batch.
+                    delta = 0.0
+                running_sum += delta
+            previous_reading = reading
             statistics.append(
                 StatisticData(
                     start=ts,
                     state=reading,
                     mean=reading,
-                    sum=reading,
+                    sum=running_sum,
                 )
             )
 
