@@ -1,114 +1,96 @@
-# Wiener Netze Smartmeter Integration for Home Assistant
+# Wiener Netze Smartmeter (WNSM) - User Documentation
 
-[![codecov](https://codecov.io/gh/DarwinsBuddy/WienerNetzeSmartmeter/branch/main/graph/badge.svg?token=ACYNOG1WFW)](https://codecov.io/gh/DarwinsBuddy/WienerNetzeSmartmeter)
-![Tests](https://github.com/DarwinsBuddy/WienerNetzeSmartMeter/actions/workflows/test.yml/badge.svg)
+This integration imports Wiener Netze smart meter data into Home Assistant and exposes:
+- sensor entities
+- recorder statistics streams for Energy Dashboard and history views
 
-![Hassfest](https://github.com/DarwinsBuddy/WienerNetzeSmartMeter/actions/workflows/hassfest.yml/badge.svg)
-![Validate](https://github.com/DarwinsBuddy/WienerNetzeSmartMeter/actions/workflows/validate.yml/badge.svg)
-![Release](https://github.com/DarwinsBuddy/WienerNetzeSmartMeter/actions/workflows/release.yml/badge.svg)
+## Initial Setup (Login Screen)
 
-## About 
+Use the Home Assistant integration dialog to enter your Wiener Netze username and password.
 
-This repo contains a custom component for [Home Assistant](https://www.home-assistant.io) for exposing a sensor
-providing information about a registered [WienerNetze Smartmeter](https://www.wienernetze.at/smartmeter).
+![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/wnsm5.png)
 
-## FAQs
-[FAQs](https://github.com/DarwinsBuddy/WienerNetzeSmartmeter/discussions/19)
+## What You Get
 
-## Installation
+For each selected meter (`zaehlpunkt`), the integration can create up to 3 sensor entities.
 
-### Manual
+## Created Sensors
 
-Copy `<project-dir>/custom_components/wnsm` into `<home-assistant-root>/config/custom_components`
+`<zaehlpunkt>` below means your meter ID, for example `at0010000000000000001000009104483`.
 
-### HACS
-1. Search for `Wiener Netze Smart Meter` or `wnsm` in HACS
-2. Install
-3. ...
-4. Profit!
+| Entity ID pattern | Created by default | Type | Description |
+| --- | --- | --- | --- |
+| `sensor.<zaehlpunkt>` | Yes | Sensor entity | Main total energy sensor (kWh), `total_increasing`. |
+| `sensor.<zaehlpunkt>_daily_cons` | Yes (if `_daily_cons` toggle is enabled) | Sensor entity | Latest cumulative value from daily historical consumption stream (kWh). |
+| `sensor.<zaehlpunkt>_daily_cons_day` | Yes (if `_daily_cons` toggle is enabled) | Sensor entity | Latest day value (daily delta) derived from the daily consumption stream (kWh). |
 
-## Configure
+Important:
+- There is currently no dedicated `sensor.<zaehlpunkt>_daily_meter_read` entity.
+- `_daily_meter_read` is implemented as recorder statistics (see below).
 
-You can choose between ui configuration or manual (by adding your credentials to `configuration.yaml` and `secrets.yaml` resp.)
-After successful configuration you can add sensors to your favourite dashboard, or even to your energy dashboard to track your total consumption.
+## Recorder Statistics Streams
 
-### UI
-<img src="./doc/wnsm1.png" alt="Settings" width="500"/>
-<img src="./doc/wnsm2.png" alt="Integrations" width="500"/>
-<img src="./doc/wnsm3.png" alt="Add Integration" width="500"/>
-<img src="./doc/wnsm4.png" alt="Search for WienerNetze" width="500"/>
-<img src="./doc/wnsm5.png" alt="Authenticate with your credentials" width="500"/>
-<img src="./doc/wnsm6.png" alt="Observe that all your smartmeters got imported" width="500"/>
+For each selected meter, these statistic IDs are used:
 
-### Manual
-See [Example configuration files](https://github.com/DarwinsBuddy/WienerNetzeSmartmeter/blob/main/example/configuration.yaml)
+| Statistic ID pattern | Default | Controlled by |
+| --- | --- | --- |
+| `wnsm:<zaehlpunkt_lowercase>` | Enabled | Always on |
+| `wnsm:<zaehlpunkt_lowercase>_cum_abs` | Enabled | Always on |
+| `wnsm:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
+| `wnsm:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).` |
 
-## Testing
+## Configuration Defaults
 
-### Environment
+Default values in the UI:
+- `Scan interval (minutes)`: `360` (6 hours)
+- `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
+- `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
+- `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).`: `True`
+- `Meters`: active/ready meters are pre-selected by default
 
-Install test dependencies:
+## Toggle Behavior
 
-```powershell
-python -m pip install -r tests/requirements.txt
+### `_daily_cons` toggle
+
+When enabled (default):
+- Creates sensor entities:
+  - `sensor.<zaehlpunkt>_daily_cons`
+  - `sensor.<zaehlpunkt>_daily_cons_day`
+- Imports/maintains statistics stream:
+  - `wnsm:<zaehlpunkt_lowercase>_daily_cons`
+
+When disabled:
+- The two `_daily_cons*` sensors are not created.
+- No new `_daily_cons` statistics are imported.
+
+### `_daily_meter_read` toggle
+
+When enabled (default):
+- Imports/maintains statistics stream:
+  - `wnsm:<zaehlpunkt_lowercase>_daily_meter_read`
+
+When disabled:
+- No new `_daily_meter_read` statistics are imported.
+- Existing other sensors/entities are unaffected.
+
+## Typical Tile Card Example
+
+Show daily value (not cumulative):
+
+```yaml
+type: tile
+entity: sensor.<zaehlpunkt>_daily_cons_day
+vertical: false
+features_position: bottom
 ```
 
-### Fast validation after code changes
+## After Changing Options
 
-Syntax check for core integration modules:
+After changing options in the integration:
+- Home Assistant reloads the integration automatically.
+- If needed, run a full Home Assistant restart to force immediate entity/statistics refresh.
 
-```powershell
-python -m py_compile custom_components/wnsm/api/client.py custom_components/wnsm/coordinator.py custom_components/wnsm/sensor.py custom_components/wnsm/wnsm_sensor.py custom_components/wnsm/config_flow.py
-```
+## Credits
 
-### Run test suite
-
-From repository root:
-
-```powershell
-python -m pytest -q -c tests/setup.cfg
-```
-
-If your local environment blocks event-loop sockets via `pytest_socket` (common on Windows + Home Assistant test stack), disable that plugin for test runs:
-
-```powershell
-python -m pytest -q -c tests/setup.cfg -p no:socket
-```
-
-### Focused tests for recent changes
-
-Authentication and API behavior:
-
-```powershell
-python -m pytest -q tests/it/test_api.py -k "login or access_key_expired" -p no:socket
-```
-
-Config-flow/options-flow compatibility:
-
-```powershell
-python -m py_compile custom_components/wnsm/config_flow.py
-```
-
-### Manual regression checklist (Home Assistant)
-
-1. Add integration via UI and verify config flow completes without 500.
-2. Open options flow, save, and confirm integration reloads.
-3. Set `scan_interval` to a low value (e.g. 5 min), verify coordinator updates at that interval.
-4. Toggle `enable_raw_api_response_write`:
-   - when enabled, verify files under `/config/tmp/wnsm_api_calls/<entry_id>/<zaehlpunkt>/`
-   - verify directory is cleaned once per new client session before first write
-5. Verify sensor attributes include:
-   - `raw_api_logging_enabled`
-   - `api_call_count`
-   - `recent_api_calls`
-   - `last_api_call_file`
-## Copyright
-
-This integration uses the API of https://www.wienernetze.at/smartmeter
-All rights regarding the API are reserved by [Wiener Netze](https://www.wienernetze.at/impressum)
-
-Special thanks to [platrysma](https://github.com/platysma)
-for providing me a starting point [vienna-smartmeter](https://github.com/platysma/vienna-smartmeter)
-and especially [florianL21](https://github.com/florianL21/)
-for his [fork](https://github.com/florianL21/vienna-smartmeter/network)
-
+This integration is based on the original work by DarwinsBuddy:
+- https://github.com/DarwinsBuddy/WienerNetzeSmartmeter
