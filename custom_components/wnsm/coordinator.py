@@ -45,6 +45,9 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         )
 
     def _inject_api_log_attributes(self, zaehlpunkt: str, attributes: dict[str, Any]) -> None:
+        if not self._enable_raw_api_response_write:
+            return
+
         recent_calls = self._smartmeter.get_recent_api_calls()
         logging_status = self._smartmeter.get_raw_api_logging_status()
         filtered_calls = [
@@ -54,7 +57,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             or f"\\{zaehlpunkt}\\" in (call.get("file_path") or "")
             or f"/{zaehlpunkt}/" in (call.get("file_path") or "")
         ]
-        attributes["raw_api_logging_enabled"] = self._enable_raw_api_response_write
+        attributes["raw_api_logging_enabled"] = True
         attributes["api_call_count"] = len(filtered_calls)
         attributes["recent_api_calls"] = filtered_calls[-5:]
         attributes["last_api_call_file"] = (
