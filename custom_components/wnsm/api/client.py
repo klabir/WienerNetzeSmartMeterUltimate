@@ -64,8 +64,9 @@ class Smartmeter:
         self._code_challenge = None
         self._local_login_args = None
         self._enable_raw_api_response_write = bool(enable_raw_api_response_write)
+        self._raw_api_response_root = "/homeassistant/tmp/wnsm_api_calls"
         self._raw_api_response_dir = os.path.join(
-            "/config/tmp/wnsm_api_calls",
+            self._raw_api_response_root,
             self._sanitize_filename(log_scope),
         )
         self._raw_api_log_prepared = False
@@ -371,9 +372,16 @@ class Smartmeter:
     def _prepare_raw_api_response_dir(self) -> None:
         if self._raw_api_log_prepared:
             return
-        if os.path.exists(self._raw_api_response_dir):
-            shutil.rmtree(self._raw_api_response_dir, ignore_errors=True)
-        os.makedirs(self._raw_api_response_dir, exist_ok=True)
+        os.makedirs(self._raw_api_response_root, exist_ok=True)
+        for name in os.listdir(self._raw_api_response_root):
+            path = os.path.join(self._raw_api_response_root, name)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
         self._raw_api_log_prepared = True
 
     @staticmethod
