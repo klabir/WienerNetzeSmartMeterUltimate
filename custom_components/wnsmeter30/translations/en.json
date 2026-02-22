@@ -17,7 +17,7 @@
           "historical_days": "Days retreived by historical API Calls",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _daily_meter_read)."
+          "enable_daily_meter_read": "Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _meter_read)."
         },
         "data_description": {
           "historical_days": "Default: {historical_days_default} days. Limit: {historical_days_limit} days. Data is fetched in 1-year chunks ({historical_days_chunk} days)."
@@ -45,7 +45,7 @@
           "historical_days": "Days retreived by historical API Calls",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _daily_meter_read).",
+          "enable_daily_meter_read": "Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _meter_read).",
           "selected_zaehlpunkte": "Meters"
         },
         "data_description": {

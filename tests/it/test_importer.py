@@ -349,7 +349,7 @@ async def test_import_daily_meter_read_statistics_emits_energy_stream(monkeypatc
         by_id[statistic_id] = (metadata, call_args[2])
 
     energy_id = next(
-        statistic_id for statistic_id in by_id if statistic_id.endswith("_daily_meter_read")
+        statistic_id for statistic_id in by_id if statistic_id.endswith("_meter_read")
     )
 
     meter_read_metadata, meter_read_statistics = by_id[energy_id]
@@ -444,7 +444,7 @@ async def test_import_daily_meter_read_statistics_keeps_sum_continuous_across_ru
             args[1].get("statistic_id")
             if isinstance(args[1], dict)
             else args[1].statistic_id
-        ).endswith("_daily_meter_read")
+        ).endswith("_meter_read")
     )
     energy_statistics = energy_call_args[2]
     assert len(energy_statistics) == 2
@@ -523,7 +523,7 @@ def test_ensure_statistics_metadata_skips_daily_meter_read_when_disabled(monkeyp
     importer._ensure_statistics_metadata()
 
     assert any(statistic_id.endswith("_daily_cons") for statistic_id in calls)
-    assert not any(statistic_id.endswith("_daily_meter_read") for statistic_id in calls)
+    assert not any(statistic_id.endswith("_meter_read") for statistic_id in calls)
 
 
 @pytest.mark.asyncio

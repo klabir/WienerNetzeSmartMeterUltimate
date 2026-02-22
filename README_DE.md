@@ -45,8 +45,8 @@ Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
 | `sensor.<zaehlpunkt>_daily_cons_day` | Ja (wenn `_daily_cons` aktiviert ist) | Sensor-Entitaet | Neuester Tageswert (taegliche Differenz) aus dem taeglichen Verbrauchs-Stream (kWh). |
 
 Wichtig:
-- Es gibt derzeit keine dedizierte `sensor.<zaehlpunkt>_daily_meter_read` Entitaet.
-- `_daily_meter_read` ist als Recorder-Statistik umgesetzt (siehe unten).
+- Es gibt derzeit keine dedizierte `sensor.<zaehlpunkt>_meter_read` Entitaet.
+- `_meter_read` ist als Recorder-Statistik umgesetzt (siehe unten).
 
 ## Recorder-Statistik-Streams
 
@@ -57,7 +57,7 @@ Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _daily_meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Aktiviert | Schalter: `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
 
 ### `_cum_abs` vs `_daily_cons`
 
@@ -78,7 +78,7 @@ Wann welche bevorzugen:
 Standardwerte in der UI:
 - `Abfrageintervall (Minuten)`: `360` (6 Stunden, erlaubter Bereich `5-720`)
 - `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).`: `True`
-- `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _daily_meter_read).`: `True`
+- `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).`: `True`
 - `Zähler`: aktive/smart-meter-bereite Zaehler sind standardmaessig vorausgewaehlt; falls keiner passt, werden alle gefundenen Zaehler vorausgewaehlt
 - `Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben`: `False`
 
@@ -97,14 +97,14 @@ Wenn deaktiviert:
 - Die beiden `_daily_cons*` Sensoren werden nicht erstellt.
 - Es werden keine neuen `_daily_cons` Statistiken importiert.
 
-### `_daily_meter_read` Schalter
+### `_meter_read` Schalter
 
 Wenn aktiviert (Standard):
 - Importiert/pflegt Statistik-Stream:
-  - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read`
+  - `wnsmeter30:<zaehlpunkt_lowercase>_meter_read`
 
 Wenn deaktiviert:
-- Es werden keine neuen `_daily_meter_read` Statistiken importiert.
+- Es werden keine neuen `_meter_read` Statistiken importiert.
 - Vorhandene andere Sensoren/Entitaeten bleiben unveraendert.
 
 ## Typisches Tile Card Beispiel
@@ -177,7 +177,7 @@ type: statistics-graph
 title: Gesamtverbrauch kumuliert (30 Tage)
 days_to_show: 30
 entities:
-  - wnsmeter30:at0010000000000000001000009111111_daily_meter_read
+  - wnsmeter30:at0010000000000000001000009111111_meter_read
 stat_types:
   - state
 hide_legend: true
@@ -232,7 +232,7 @@ In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware getauscht, und Tot
 
 ## Energy Dashboard
 
-Wenn bei dir ein Smartmeter-Hardwaretausch stattgefunden hat, empfehlen wir die Nutzung der Statistik mit Suffix `_daily_meter_read`.
+Wenn bei dir ein Smartmeter-Hardwaretausch stattgefunden hat, empfehlen wir die Nutzung der Statistik mit Suffix `_meter_read`.
 Andernfalls kann dein Tageswert falsch sein.
 
 ## Nach dem Aendern von Optionen

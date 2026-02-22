@@ -46,7 +46,7 @@ class Importer:
         self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
         self.cumulative_id = f"{self.id}_cum_abs"
         self.daily_consumption_id = f"{self.id}_daily_cons"
-        self.daily_meter_read_id = f"{self.id}_daily_meter_read"
+        self.daily_meter_read_id = f"{self.id}_meter_read"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
