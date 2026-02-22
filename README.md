@@ -57,16 +57,16 @@ For each selected meter, these statistic IDs are used:
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Enabled | Always on |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Enabled | Always on |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values and statistics (Suffix _daily_meter_read).` Energy Dashboard stream (`sum` is monotonic). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _daily_meter_read).` Energy Dashboard stream (`sum` is monotonic). |
 
 ## Configuration Defaults
 
 Default values in the UI:
 - `Scan interval (minutes)`: `360` (6 hours, allowed range `5-720`)
-- `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 - `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
-- `Enable daily total consumption historical values and statistics (Suffix _daily_meter_read).`: `True`
+- `Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _daily_meter_read).`: `True`
 - `Meters`: active/smart-meter-ready meters are pre-selected by default; if none match, all discovered meters are pre-selected
+- `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 
 ## Toggle Behavior
 

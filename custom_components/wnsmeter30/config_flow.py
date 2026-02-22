@@ -161,7 +161,6 @@ def user_schema(default_scan_interval: int, default_historical_days: int):
             vol.Optional(CONF_SCAN_INTERVAL, default=default_scan_interval): _scan_interval_field(
                 default_scan_interval
             ),
-            vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
             vol.Optional(
                 CONF_HISTORICAL_DAYS,
                 default=default_historical_days,
@@ -172,6 +171,7 @@ def user_schema(default_scan_interval: int, default_historical_days: int):
             vol.Optional(
                 CONF_ENABLE_DAILY_METER_READ, default=DEFAULT_ENABLE_DAILY_METER_READ
             ): cv.boolean,
+            vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
         }
     )
 
@@ -193,10 +193,6 @@ def _options_schema(
                 default=scan_interval,
             ): _scan_interval_field(scan_interval),
             vol.Optional(
-                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                default=enable_raw_api_response_write,
-            ): cv.boolean,
-            vol.Optional(
                 CONF_HISTORICAL_DAYS,
                 default=historical_days,
             ): _historical_days_field(historical_days),
@@ -212,6 +208,10 @@ def _options_schema(
                 CONF_SELECTED_ZAEHLPUNKTE,
                 default=selected_meters,
             ): _meter_select_field(meter_options),
+            vol.Optional(
+                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+                default=enable_raw_api_response_write,
+            ): cv.boolean,
         }
     )
 
