@@ -680,7 +680,7 @@ class Importer:
     def get_daily_meter_read_statistics_metadata(self):
         return self._build_statistics_metadata(
             statistic_id=self.daily_meter_read_id,
-            name=f"{self.zaehlpunkt} daily meter read",
+            name=f"{self.zaehlpunkt} _meter_read",
             has_mean=True,
             has_sum=True,
         )
@@ -854,7 +854,7 @@ class Importer:
                 start = self._to_datetime(row.get("end"))
                 if start is None:
                     _LOGGER.warning(
-                        "Skipping incremental import for %s daily meter read due to invalid end timestamp: %s",
+                        "Skipping incremental import for %s meter read due to invalid end timestamp: %s",
                         self.zaehlpunkt,
                         row.get("end"),
                     )

@@ -57,7 +57,7 @@ Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Aktiviert | Schalter: `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Aktiviert | Schalter: `Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
 
 ### `_cum_abs` vs `_daily_cons`
 
@@ -78,7 +78,7 @@ Wann welche bevorzugen:
 Standardwerte in der UI:
 - `Abfrageintervall (Minuten)`: `360` (6 Stunden, erlaubter Bereich `5-720`)
 - `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).`: `True`
-- `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).`: `True`
+- `Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _meter_read).`: `True`
 - `Zähler`: aktive/smart-meter-bereite Zaehler sind standardmaessig vorausgewaehlt; falls keiner passt, werden alle gefundenen Zaehler vorausgewaehlt
 - `Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben`: `False`
 
