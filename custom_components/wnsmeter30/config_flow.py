@@ -16,6 +16,7 @@ from .const import (
     CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
+    CONF_ZAEHLPUNKT_ALIASES,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
@@ -138,6 +139,58 @@ def _normalize_selected_meters(selected: Any) -> list[str]:
     return []
 
 
+def _normalize_meter_aliases(
+    aliases: Any, allowed_meter_ids: set[str] | None = None
+) -> dict[str, str]:
+    if not isinstance(aliases, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for meter_id, alias in aliases.items():
+        meter_id_str = str(meter_id)
+        if allowed_meter_ids is not None and meter_id_str not in allowed_meter_ids:
+            continue
+        alias_str = str(alias).strip()
+        if alias_str:
+            normalized[meter_id_str] = alias_str
+    return normalized
+
+
+def _build_meter_alias_defaults(
+    selected_meters: list[str],
+    discovered_meters: list[dict[str, Any]],
+    existing_aliases: dict[str, str] | None = None,
+) -> dict[str, str]:
+    defaults: dict[str, str] = {}
+    existing = existing_aliases or {}
+    discovered_by_id: dict[str, dict[str, Any]] = {}
+    for zp in discovered_meters:
+        meter_id = _meter_id(zp)
+        if meter_id is None:
+            continue
+        discovered_by_id[meter_id] = zp
+
+    for meter_id in selected_meters:
+        if meter_id in existing:
+            defaults[meter_id] = existing[meter_id]
+            continue
+        zp = discovered_by_id.get(meter_id, {})
+        label = zp.get("customLabel") or zp.get("label") or ""
+        defaults[meter_id] = str(label).strip()
+    return defaults
+
+
+def _meter_alias_schema(
+    selected_meters: list[str],
+    alias_defaults: dict[str, str],
+) -> vol.Schema:
+    fields: dict[Any, Any] = {}
+    for meter_id in selected_meters:
+        fields[vol.Optional(meter_id, default=alias_defaults.get(meter_id, ""))] = (
+            cv.string
+        )
+    return vol.Schema(fields)
+
+
 def _meter_select_field(options: list[dict[str, str]]):
     try:
         selector_config: dict[str, Any] = {
@@ -185,35 +238,37 @@ def _options_schema(
     enable_daily_meter_read: bool,
     selected_meters: list[str],
     meter_options: list[dict[str, str]],
+    meter_aliases: dict[str, str],
 ) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Optional(
-                CONF_SCAN_INTERVAL,
-                default=scan_interval,
-            ): _scan_interval_field(scan_interval),
-            vol.Optional(
-                CONF_HISTORICAL_DAYS,
-                default=historical_days,
-            ): _historical_days_field(historical_days),
-            vol.Optional(
-                CONF_ENABLE_DAILY_CONS,
-                default=enable_daily_cons,
-            ): cv.boolean,
-            vol.Optional(
-                CONF_ENABLE_DAILY_METER_READ,
-                default=enable_daily_meter_read,
-            ): cv.boolean,
-            vol.Required(
-                CONF_SELECTED_ZAEHLPUNKTE,
-                default=selected_meters,
-            ): _meter_select_field(meter_options),
-            vol.Optional(
-                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                default=enable_raw_api_response_write,
-            ): cv.boolean,
-        }
-    )
+    fields: dict[Any, Any] = {
+        vol.Optional(
+            CONF_SCAN_INTERVAL,
+            default=scan_interval,
+        ): _scan_interval_field(scan_interval),
+        vol.Optional(
+            CONF_HISTORICAL_DAYS,
+            default=historical_days,
+        ): _historical_days_field(historical_days),
+        vol.Optional(
+            CONF_ENABLE_DAILY_CONS,
+            default=enable_daily_cons,
+        ): cv.boolean,
+        vol.Optional(
+            CONF_ENABLE_DAILY_METER_READ,
+            default=enable_daily_meter_read,
+        ): cv.boolean,
+        vol.Required(
+            CONF_SELECTED_ZAEHLPUNKTE,
+            default=selected_meters,
+        ): _meter_select_field(meter_options),
+        vol.Optional(
+            CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+            default=enable_raw_api_response_write,
+        ): cv.boolean,
+    }
+    for meter_id in selected_meters:
+        fields[vol.Optional(meter_id, default=meter_aliases.get(meter_id, ""))] = cv.string
+    return vol.Schema(fields)
 
 
 class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -313,9 +368,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
                 errors["base"] = "no_meter_selected"
             else:
                 self.data[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
-                return self.async_create_entry(
-                    title="WienerNetzeSmartmeter 3.0", data=self.data
-                )
+                return await self.async_step_meter_aliases()
 
         return self.async_show_form(
             step_id="select_meters",
@@ -328,6 +381,44 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_meter_aliases(self, user_input: Optional[dict[str, Any]] = None):
+        """Allow users to define optional aliases for selected meters."""
+        if getattr(self, "data", None) is None:
+            return await self.async_step_user()
+
+        selected_meters = _normalize_selected_meters(
+            self.data.get(CONF_SELECTED_ZAEHLPUNKTE)
+        )
+        if not selected_meters:
+            return await self.async_step_select_meters()
+
+        allowed_meter_ids = set(selected_meters)
+        existing_aliases = _normalize_meter_aliases(
+            self.data.get(CONF_ZAEHLPUNKT_ALIASES, {}),
+            allowed_meter_ids,
+        )
+        alias_defaults = _build_meter_alias_defaults(
+            selected_meters,
+            getattr(self, "_discovered_zaehlpunkte", []),
+            existing_aliases,
+        )
+
+        if user_input is not None:
+            aliases: dict[str, str] = {}
+            for meter_id in selected_meters:
+                alias_value = str(user_input.get(meter_id, "")).strip()
+                if alias_value:
+                    aliases[meter_id] = alias_value
+            self.data[CONF_ZAEHLPUNKT_ALIASES] = aliases
+            return self.async_create_entry(
+                title="WienerNetzeSmartmeter 3.0", data=self.data
+            )
+
+        return self.async_show_form(
+            step_id="meter_aliases",
+            data_schema=_meter_alias_schema(selected_meters, alias_defaults),
         )
 
 
@@ -360,6 +451,18 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
         ]
         if not current_selected_meters:
             current_selected_meters = default_selected
+        current_aliases = _normalize_meter_aliases(
+            config_entry.options.get(
+                CONF_ZAEHLPUNKT_ALIASES,
+                config_entry.data.get(CONF_ZAEHLPUNKT_ALIASES, {}),
+            ),
+            option_values,
+        )
+        current_aliases = _build_meter_alias_defaults(
+            current_selected_meters,
+            available_meters,
+            current_aliases,
+        )
         current_historical_days = _normalize_historical_days(
             config_entry.options.get(
                 CONF_HISTORICAL_DAYS,
@@ -405,12 +508,19 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                         enable_daily_meter_read=current_enable_daily_meter_read,
                         selected_meters=current_selected_meters,
                         meter_options=meter_options,
+                        meter_aliases=current_aliases,
                     ),
                     description_placeholders=_historical_days_description_placeholders(),
                     errors={"base": "no_meter_selected"},
                 )
+            aliases: dict[str, str] = {}
+            for meter_id in selected_meters:
+                alias_value = str(user_input.get(meter_id, "")).strip()
+                if alias_value:
+                    aliases[meter_id] = alias_value
             user_input = dict(user_input)
             user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
+            user_input[CONF_ZAEHLPUNKT_ALIASES] = aliases
             user_input[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
                 user_input.get(CONF_HISTORICAL_DAYS, current_historical_days)
             )
@@ -429,6 +539,7 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 enable_daily_meter_read=current_enable_daily_meter_read,
                 selected_meters=current_selected_meters,
                 meter_options=meter_options,
+                meter_aliases=current_aliases,
             ),
             description_placeholders=_historical_days_description_placeholders(),
         )

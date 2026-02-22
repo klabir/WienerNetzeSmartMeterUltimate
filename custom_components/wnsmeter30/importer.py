@@ -36,6 +36,7 @@ class Importer:
         async_smartmeter: AsyncSmartmeter,
         zaehlpunkt: str,
         unit_of_measurement: str,
+        display_name: str | None = None,
         granularity: ValueType = ValueType.QUARTER_HOUR,
         skip_login: bool = False,
         preloaded_zaehlpunkt: dict | None = None,
@@ -48,6 +49,7 @@ class Importer:
         self.daily_consumption_id = f"{self.id}_daily_cons"
         self.daily_meter_read_id = f"{self.id}_meter_read"
         self.zaehlpunkt = zaehlpunkt
+        self.display_name = display_name or zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
         self.hass = hass
@@ -670,7 +672,7 @@ class Importer:
     def get_statistics_metadata(self):
         return self._build_statistics_metadata(
             statistic_id=self.id,
-            name=self.zaehlpunkt,
+            name=self.display_name,
             has_mean=False,
             has_sum=True,
         )
@@ -678,7 +680,7 @@ class Importer:
     def get_cumulative_statistics_metadata(self):
         return self._build_statistics_metadata(
             statistic_id=self.cumulative_id,
-            name=f"{self.zaehlpunkt} cumulative",
+            name=f"{self.display_name} cumulative",
             has_mean=True,
             has_sum=True,
         )
@@ -686,7 +688,7 @@ class Importer:
     def get_daily_consumption_statistics_metadata(self):
         return self._build_statistics_metadata(
             statistic_id=self.daily_consumption_id,
-            name=f"{self.zaehlpunkt} daily consumption",
+            name=f"{self.display_name} daily consumption",
             has_mean=True,
             has_sum=True,
         )
@@ -694,7 +696,7 @@ class Importer:
     def get_daily_meter_read_statistics_metadata(self):
         return self._build_statistics_metadata(
             statistic_id=self.daily_meter_read_id,
-            name=f"{self.zaehlpunkt} meter_read",
+            name=f"{self.display_name} meter_read",
             has_mean=True,
             has_sum=True,
         )

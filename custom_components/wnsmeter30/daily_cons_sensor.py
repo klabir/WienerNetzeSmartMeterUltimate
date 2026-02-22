@@ -12,7 +12,8 @@ class WNSMDailyConsSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEn
     def __init__(self, coordinator: WNSMDataUpdateCoordinator, zaehlpunkt: str) -> None:
         super().__init__(coordinator)
         self.zaehlpunkt = zaehlpunkt
-        self._attr_name = f"{zaehlpunkt} daily cons"
+        display_name = coordinator.display_name(zaehlpunkt)
+        self._attr_name = f"{display_name} daily cons"
         self._attr_unique_id = f"{zaehlpunkt}_daily_cons"
         self._attr_icon = "mdi:calendar-month"
         self._attr_device_class = SensorDeviceClass.ENERGY

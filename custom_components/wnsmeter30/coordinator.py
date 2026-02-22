@@ -25,6 +25,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         username: str,
         password: str,
         zaehlpunkte: list[str],
+        meter_aliases: dict[str, str] | None,
         scan_interval_minutes: int,
         historical_days: int,
         enable_raw_api_response_write: bool,
@@ -38,6 +39,11 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         except (TypeError, ValueError):
             historical_days_int = 1
         self._historical_days = max(1, historical_days_int)
+        self._meter_aliases = {
+            str(meter_id): str(alias).strip()
+            for meter_id, alias in (meter_aliases or {}).items()
+            if str(alias).strip()
+        }
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
@@ -80,6 +86,10 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         attributes["raw_api_logging_prepare_error"] = logging_status["prepare_error"]
         attributes["raw_api_last_write_error"] = logging_status["last_write_error"]
 
+    def display_name(self, zaehlpunkt: str) -> str:
+        alias = self._meter_aliases.get(zaehlpunkt)
+        return alias if alias else zaehlpunkt
+
     def _historical_window(self) -> tuple[datetime, datetime]:
         end = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
@@ -111,6 +121,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             try:
                 zaehlpunkt_response = await self._async_smartmeter.get_zaehlpunkt(zaehlpunkt)
                 attributes.update(zaehlpunkt_response)
+                attributes["display_name"] = self.display_name(zaehlpunkt)
 
                 if self._async_smartmeter.is_active(zaehlpunkt_response):
                     short_window, fallback_window = self._live_meter_reading_windows()
@@ -137,6 +148,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         self._async_smartmeter,
                         zaehlpunkt,
                         UnitOfEnergy.KILO_WATT_HOUR,
+                        display_name=self.display_name(zaehlpunkt),
                         skip_login=True,
                         preloaded_zaehlpunkt=zaehlpunkt_response,
                         historical_days=self._historical_days,

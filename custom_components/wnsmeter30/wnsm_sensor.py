@@ -32,17 +32,18 @@ class WNSMSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
     ) -> None:
         super().__init__(coordinator)
         self.zaehlpunkt = zaehlpunkt
+        display_name = coordinator.display_name(zaehlpunkt)
 
         self._attr_native_value: int | float | None = 0
         self._attr_extra_state_attributes = {}
-        self._attr_name = zaehlpunkt
+        self._attr_name = display_name
         self._attr_icon = self._icon()
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
         self.attrs: dict[str, Any] = {}
-        self._name: str = zaehlpunkt
+        self._name: str = display_name
         self._available: bool = True
         self._updatets: str | None = None
 

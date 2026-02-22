@@ -5,6 +5,7 @@ DOMAIN = "wnsmeter30"
 
 CONF_ZAEHLPUNKTE = "zaehlpunkte"
 CONF_SELECTED_ZAEHLPUNKTE = "selected_zaehlpunkte"
+CONF_ZAEHLPUNKT_ALIASES = "zaehlpunkt_aliases"
 CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL_MINUTES = 360
 CONF_HISTORICAL_DAYS = "historical_days"

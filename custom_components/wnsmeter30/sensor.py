@@ -14,6 +14,7 @@ from .const import (
     CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
+    CONF_ZAEHLPUNKT_ALIASES,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
@@ -62,6 +63,29 @@ def _resolve_selected_zaehlpunkte(config_entry: config_entries.ConfigEntry) -> l
     return default_selected
 
 
+def _resolve_zaehlpunkt_aliases(
+    config_entry: config_entries.ConfigEntry, selected_meters: list[str]
+) -> dict[str, str]:
+    config = config_entry.data
+    raw_aliases = config_entry.options.get(
+        CONF_ZAEHLPUNKT_ALIASES,
+        config.get(CONF_ZAEHLPUNKT_ALIASES, {}),
+    )
+    if not isinstance(raw_aliases, dict):
+        return {}
+
+    selected = set(selected_meters)
+    aliases: dict[str, str] = {}
+    for meter_id, alias in raw_aliases.items():
+        meter_id_str = str(meter_id)
+        if meter_id_str not in selected:
+            continue
+        alias_str = str(alias).strip()
+        if alias_str:
+            aliases[meter_id_str] = alias_str
+    return aliases
+
+
 async def async_setup_entry(
     hass: core.HomeAssistant,
     config_entry: config_entries.ConfigEntry,
@@ -102,11 +126,13 @@ async def async_setup_entry(
         historical_days = DEFAULT_HISTORICAL_DAYS
     historical_days = max(1, min(MAX_HISTORICAL_DAYS, historical_days))
     zaehlpunkte = _resolve_selected_zaehlpunkte(config_entry)
+    meter_aliases = _resolve_zaehlpunkt_aliases(config_entry, zaehlpunkte)
     coordinator = WNSMDataUpdateCoordinator(
         hass=hass,
         username=config[CONF_USERNAME],
         password=config[CONF_PASSWORD],
         zaehlpunkte=zaehlpunkte,
+        meter_aliases=meter_aliases,
         scan_interval_minutes=scan_interval,
         historical_days=historical_days,
         enable_raw_api_response_write=enable_raw_api_response_write,

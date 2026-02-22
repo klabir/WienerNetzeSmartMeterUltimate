@@ -29,6 +29,10 @@
         "data": {
           "selected_zaehlpunkte": "Meters"
         }
+      },
+      "meter_aliases": {
+        "title": "Meter aliases",
+        "description": "Set optional aliases for selected meters. Leave empty to keep the meter ID as display name."
       }
     }
   },
