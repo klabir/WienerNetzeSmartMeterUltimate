@@ -60,6 +60,63 @@ class _DummySmartmeter:
         }
 
 
+class _DummySmartmeterBewegungsdaten:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dt.datetime, dt.datetime, object]] = []
+
+    def bewegungsdaten(
+        self,
+        zaehlpunkt: str,
+        start: dt.datetime,
+        end: dt.datetime,
+        granularity: object,
+    ) -> dict:
+        self.calls.append((zaehlpunkt, start, end, granularity))
+        if len(self.calls) == 1:
+            return {
+                "descriptor": {
+                    "geschaeftspartnernummer": "123",
+                    "zaehlpunktnummer": zaehlpunkt,
+                    "rolle": "V002",
+                    "aggregat": "NONE",
+                    "granularitaet": "QH",
+                    "einheit": None,
+                },
+                "values": [
+                    {
+                        "wert": 0.5,
+                        "zeitpunktVon": "2025-12-31T23:45:00Z",
+                        "zeitpunktBis": "2026-01-01T00:00:00Z",
+                        "geschaetzt": False,
+                    }
+                ],
+            }
+        return {
+            "descriptor": {
+                "geschaeftspartnernummer": "123",
+                "zaehlpunktnummer": zaehlpunkt,
+                "rolle": "V002",
+                "aggregat": "NONE",
+                "granularitaet": "QH",
+                "einheit": "KWH",
+            },
+            "values": [
+                {
+                    "wert": 0.7,
+                    "zeitpunktVon": "2025-12-31T23:45:00Z",
+                    "zeitpunktBis": "2026-01-01T00:00:00Z",
+                    "geschaetzt": False,
+                },
+                {
+                    "wert": 0.8,
+                    "zeitpunktVon": "2026-01-01T00:00:00Z",
+                    "zeitpunktBis": "2026-01-01T00:15:00Z",
+                    "geschaetzt": False,
+                },
+            ],
+        }
+
+
 def test_build_chunk_ranges_splits_into_year_chunks():
     start = dt.datetime(2025, 1, 1, 12, 0, tzinfo=dt.timezone.utc)
     end = dt.datetime(2026, 1, 10, 6, 0, tzinfo=dt.timezone.utc)
@@ -113,3 +170,22 @@ async def test_get_historic_daily_consumption_deduplicates_chunk_overlap():
         value for value in values if value["zeitpunktVon"] == "2026-01-01T00:00:00Z"
     )
     assert overlap_value["wert"] == 2500
+
+
+@pytest.mark.asyncio
+async def test_get_bewegungsdaten_merges_unit_from_later_chunk():
+    dummy_smartmeter = _DummySmartmeterBewegungsdaten()
+    async_smartmeter = AsyncSmartmeter(_DummyHass(), dummy_smartmeter)  # type: ignore[arg-type]
+    zaehlpunkt = "AT0010000000000000001000011111111"
+    start = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    end = dt.datetime(2026, 1, 10, tzinfo=dt.timezone.utc)
+
+    result = await async_smartmeter.get_bewegungsdaten(zaehlpunkt, start, end)
+
+    assert len(dummy_smartmeter.calls) == 2
+    assert result["unitOfMeasurement"] == "KWH"
+    assert len(result["values"]) == 2
+    overlap_value = next(
+        value for value in result["values"] if value["zeitpunktVon"] == "2025-12-31T23:45:00Z"
+    )
+    assert overlap_value["wert"] == 0.7

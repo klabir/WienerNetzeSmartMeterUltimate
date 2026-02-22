@@ -372,9 +372,15 @@ class AsyncSmartmeter:
 
         values: list[dict[str, any]] = []
         merged: dict[str, any] = {}
-        for index, translated in enumerate(translated_chunks):
-            if index == 0:
-                merged = dict(translated)
+        for translated in translated_chunks:
+            # Prefer first non-empty metadata value across chunks.
+            for key, value in translated.items():
+                if key == "values":
+                    continue
+                if value is None:
+                    continue
+                if key not in merged or merged.get(key) is None:
+                    merged[key] = value
             values.extend(translated.get("values", []) or [])
 
         merged["values"] = self._deduplicate_values(values)
