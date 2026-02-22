@@ -1,4 +1,4 @@
-# Wiener Netze Smartmeter (WNSM) - Benutzerdokumentation
+# Wiener Netze Smartmeter 3.0 (WNSM30) - Benutzerdokumentation
 
 Diese Integration importiert Wiener Netze Smartmeter-Daten in Home Assistant und stellt bereit:
 - Sensor-Entitaeten
