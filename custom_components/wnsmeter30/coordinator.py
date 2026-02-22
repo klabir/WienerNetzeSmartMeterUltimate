@@ -6,6 +6,7 @@ from typing import Any
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import slugify
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api import Smartmeter
@@ -31,6 +32,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         enable_raw_api_response_write: bool,
         enable_daily_cons_statistics: bool,
         enable_daily_meter_read_statistics: bool,
+        use_alias_for_ids: bool,
         log_scope: str,
     ) -> None:
         self._zaehlpunkte = zaehlpunkte
@@ -44,6 +46,8 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             for meter_id, alias in (meter_aliases or {}).items()
             if str(alias).strip()
         }
+        self._use_alias_for_ids = bool(use_alias_for_ids)
+        self._alias_id_keys = self._build_alias_id_keys()
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
@@ -89,6 +93,58 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
     def display_name(self, zaehlpunkt: str) -> str:
         alias = self._meter_aliases.get(zaehlpunkt)
         return alias if alias else zaehlpunkt
+
+    def _build_alias_id_keys(self) -> dict[str, str]:
+        if not self._use_alias_for_ids:
+            return {}
+
+        alias_slugs: dict[str, str] = {}
+        for zaehlpunkt in self._zaehlpunkte:
+            alias = self._meter_aliases.get(zaehlpunkt, "")
+            alias_slug = slugify(alias).lower() if alias else ""
+            if alias_slug:
+                alias_slugs[zaehlpunkt] = alias_slug
+
+        resolved: dict[str, str] = {}
+        # Reserve fallback statistic keys from meters without alias to avoid
+        # collisions when alias-based statistic IDs are enabled.
+        used: set[str] = {
+            zaehlpunkt.lower()
+            for zaehlpunkt in self._zaehlpunkte
+            if zaehlpunkt not in alias_slugs
+        }
+        for zaehlpunkt in self._zaehlpunkte:
+            alias_slug = alias_slugs.get(zaehlpunkt)
+            if not alias_slug:
+                continue
+
+            candidate = alias_slug
+            if candidate in used:
+                suffix = zaehlpunkt.lower()[-6:]
+                candidate = f"{alias_slug}_{suffix}"
+                if candidate in used:
+                    candidate = f"{alias_slug}_{zaehlpunkt.lower()}"
+                if candidate in used:
+                    index = 2
+                    while f"{candidate}_{index}" in used:
+                        index += 1
+                    candidate = f"{candidate}_{index}"
+                _LOGGER.warning(
+                    "Alias-based ID key '%s' conflicts with an existing key. Using '%s' for %s.",
+                    alias_slug,
+                    candidate,
+                    zaehlpunkt,
+                )
+
+            used.add(candidate)
+            resolved[zaehlpunkt] = candidate
+        return resolved
+
+    def entity_id_key(self, zaehlpunkt: str) -> str:
+        return self._alias_id_keys.get(zaehlpunkt, zaehlpunkt)
+
+    def statistic_id_key(self, zaehlpunkt: str) -> str:
+        return self._alias_id_keys.get(zaehlpunkt, zaehlpunkt.lower())
 
     def _historical_window(self) -> tuple[datetime, datetime]:
         end = datetime.now(timezone.utc).replace(
@@ -149,6 +205,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         zaehlpunkt,
                         UnitOfEnergy.KILO_WATT_HOUR,
                         display_name=self.display_name(zaehlpunkt),
+                        statistic_id_base=self.statistic_id_key(zaehlpunkt),
                         skip_login=True,
                         preloaded_zaehlpunkt=zaehlpunkt_response,
                         historical_days=self._historical_days,

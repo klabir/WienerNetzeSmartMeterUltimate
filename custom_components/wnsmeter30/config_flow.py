@@ -16,11 +16,13 @@ from .const import (
     CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
+    CONF_USE_ALIAS_FOR_IDS,
     CONF_ZAEHLPUNKT_ALIASES,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_USE_ALIAS_FOR_IDS,
     DEFAULT_HISTORICAL_DAYS,
     HISTORICAL_API_CHUNK_DAYS,
     MAX_HISTORICAL_DAYS,
@@ -224,6 +226,9 @@ def user_schema(default_scan_interval: int, default_historical_days: int):
             vol.Optional(
                 CONF_ENABLE_DAILY_METER_READ, default=DEFAULT_ENABLE_DAILY_METER_READ
             ): cv.boolean,
+            vol.Optional(
+                CONF_USE_ALIAS_FOR_IDS, default=DEFAULT_USE_ALIAS_FOR_IDS
+            ): cv.boolean,
             vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
         }
     )
@@ -236,6 +241,7 @@ def _options_schema(
     historical_days: int,
     enable_daily_cons: bool,
     enable_daily_meter_read: bool,
+    use_alias_for_ids: bool,
     selected_meters: list[str],
     meter_options: list[dict[str, str]],
     meter_aliases: dict[str, str],
@@ -256,6 +262,10 @@ def _options_schema(
         vol.Optional(
             CONF_ENABLE_DAILY_METER_READ,
             default=enable_daily_meter_read,
+        ): cv.boolean,
+        vol.Optional(
+            CONF_USE_ALIAS_FOR_IDS,
+            default=use_alias_for_ids,
         ): cv.boolean,
         vol.Required(
             CONF_SELECTED_ZAEHLPUNKTE,
@@ -491,6 +501,14 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ
             ),
         )
+        current_use_alias_for_ids = bool(
+            config_entry.options.get(
+                CONF_USE_ALIAS_FOR_IDS,
+                config_entry.data.get(
+                    CONF_USE_ALIAS_FOR_IDS, DEFAULT_USE_ALIAS_FOR_IDS
+                ),
+            )
+        )
 
         if user_input is not None:
             selected_meters = _normalize_selected_meters(
@@ -508,6 +526,7 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                         historical_days=current_historical_days,
                         enable_daily_cons=current_enable_daily_cons,
                         enable_daily_meter_read=current_enable_daily_meter_read,
+                        use_alias_for_ids=current_use_alias_for_ids,
                         selected_meters=current_selected_meters,
                         meter_options=meter_options,
                         meter_aliases=current_aliases,
@@ -539,6 +558,7 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 historical_days=current_historical_days,
                 enable_daily_cons=current_enable_daily_cons,
                 enable_daily_meter_read=current_enable_daily_meter_read,
+                use_alias_for_ids=current_use_alias_for_ids,
                 selected_meters=current_selected_meters,
                 meter_options=meter_options,
                 meter_aliases=current_aliases,

@@ -4,12 +4,10 @@ from typing import Any, Optional
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
-    ENTITY_ID_FORMAT,
 )
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import slugify
 
 from .coordinator import WNSMDataUpdateCoordinator
 
@@ -33,10 +31,13 @@ class WNSMSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
         super().__init__(coordinator)
         self.zaehlpunkt = zaehlpunkt
         display_name = coordinator.display_name(zaehlpunkt)
+        entity_id_key = coordinator.entity_id_key(zaehlpunkt)
 
         self._attr_native_value: int | float | None = 0
         self._attr_extra_state_attributes = {}
         self._attr_name = display_name
+        self._attr_unique_id = entity_id_key
+        self._attr_suggested_object_id = entity_id_key
         self._attr_icon = self._icon()
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_device_class = SensorDeviceClass.ENERGY
@@ -52,10 +53,6 @@ class WNSMSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
         return f"{self._attr_native_value:.3f}"
 
     @property
-    def _id(self):
-        return ENTITY_ID_FORMAT.format(slugify(self._name).lower())
-
-    @property
     def icon(self) -> str:
         return self._attr_icon
 
@@ -67,7 +64,7 @@ class WNSMSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return self.zaehlpunkt
+        return self._attr_unique_id
 
     @property
     def available(self) -> bool:

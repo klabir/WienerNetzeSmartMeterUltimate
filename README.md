@@ -61,6 +61,8 @@ For each selected meter, these statistic IDs are used:
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
 | `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Enabled | Toggle: `Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).` Energy Dashboard stream (`sum` is monotonic). |
 
+If `Use alias also for statistic and entity IDs` is enabled and an alias exists, statistic IDs use an alias-based slug instead of `<zaehlpunkt_lowercase>`.
+
 ### `_cum_abs` vs `_daily_cons`
 
 Granularity:
@@ -81,6 +83,7 @@ Default values in the UI:
 - `Scan interval (minutes)`: `360` (6 hours, allowed range `5-720`)
 - `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
 - `Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).`: `True`
+- `Use alias also for statistic and entity IDs`: `False`
 - `Meters`: active/smart-meter-ready meters are pre-selected by default; if none match, all discovered meters are pre-selected
 - `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 

@@ -15,8 +15,10 @@ class WNSMDailyConsDaySensor(
         super().__init__(coordinator)
         self.zaehlpunkt = zaehlpunkt
         display_name = coordinator.display_name(zaehlpunkt)
+        entity_id_key = coordinator.entity_id_key(zaehlpunkt)
         self._attr_name = f"{display_name} daily cons day"
-        self._attr_unique_id = f"{zaehlpunkt}_daily_cons_day"
+        self._attr_unique_id = f"{entity_id_key}_daily_cons_day"
+        self._attr_suggested_object_id = f"{entity_id_key}_daily_cons_day"
         self._attr_icon = "mdi:calendar-today"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR

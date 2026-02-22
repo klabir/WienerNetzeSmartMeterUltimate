@@ -6,6 +6,7 @@ DOMAIN = "wnsmeter30"
 CONF_ZAEHLPUNKTE = "zaehlpunkte"
 CONF_SELECTED_ZAEHLPUNKTE = "selected_zaehlpunkte"
 CONF_ZAEHLPUNKT_ALIASES = "zaehlpunkt_aliases"
+CONF_USE_ALIAS_FOR_IDS = "use_alias_for_ids"
 CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL_MINUTES = 360
 CONF_HISTORICAL_DAYS = "historical_days"
@@ -17,6 +18,7 @@ CONF_ENABLE_DAILY_CONS = "enable_daily_cons"
 DEFAULT_ENABLE_DAILY_CONS = True
 CONF_ENABLE_DAILY_METER_READ = "enable_daily_meter_read"
 DEFAULT_ENABLE_DAILY_METER_READ = True
+DEFAULT_USE_ALIAS_FOR_IDS = False
 
 ATTRS_ZAEHLPUNKT_CALL = [
     ("zaehlpunktnummer", "zaehlpunktnummer"),

@@ -14,11 +14,13 @@ from .const import (
     CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
+    CONF_USE_ALIAS_FOR_IDS,
     CONF_ZAEHLPUNKT_ALIASES,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_USE_ALIAS_FOR_IDS,
     DEFAULT_HISTORICAL_DAYS,
     MAX_HISTORICAL_DAYS,
     DEFAULT_SCAN_INTERVAL_MINUTES,
@@ -115,6 +117,12 @@ async def async_setup_entry(
             config.get(CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ),
         )
     )
+    use_alias_for_ids = bool(
+        config_entry.options.get(
+            CONF_USE_ALIAS_FOR_IDS,
+            config.get(CONF_USE_ALIAS_FOR_IDS, DEFAULT_USE_ALIAS_FOR_IDS),
+        )
+    )
     try:
         historical_days = int(
             config_entry.options.get(
@@ -138,6 +146,7 @@ async def async_setup_entry(
         enable_raw_api_response_write=enable_raw_api_response_write,
         enable_daily_cons_statistics=enable_daily_cons,
         enable_daily_meter_read_statistics=enable_daily_meter_read,
+        use_alias_for_ids=use_alias_for_ids,
         log_scope=config_entry.entry_id,
     )
     await coordinator.async_config_entry_first_refresh()

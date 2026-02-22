@@ -18,6 +18,7 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from .AsyncSmartmeter import AsyncSmartmeter
@@ -37,6 +38,7 @@ class Importer:
         zaehlpunkt: str,
         unit_of_measurement: str,
         display_name: str | None = None,
+        statistic_id_base: str | None = None,
         granularity: ValueType = ValueType.QUARTER_HOUR,
         skip_login: bool = False,
         preloaded_zaehlpunkt: dict | None = None,
@@ -44,7 +46,11 @@ class Importer:
         enable_daily_consumption_statistics: bool = True,
         enable_daily_meter_read_statistics: bool = True,
     ):
-        self.id = f'{DOMAIN}:{zaehlpunkt.lower()}'
+        base_id_source = statistic_id_base or zaehlpunkt.lower()
+        base_id = slugify(base_id_source).lower()
+        if not base_id:
+            base_id = zaehlpunkt.lower()
+        self.id = f"{DOMAIN}:{base_id}"
         self.cumulative_id = f"{self.id}_cum_abs"
         self.daily_consumption_id = f"{self.id}_daily_cons"
         self.daily_meter_read_id = f"{self.id}_meter_read"
