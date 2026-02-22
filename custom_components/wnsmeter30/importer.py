@@ -26,10 +26,6 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Experimental toggle for Energy Flow rendering tests.
-# Set to True to restore previous behavior without code restructuring.
-DAILY_METER_READ_HAS_MEAN = False
-
 
 class Importer:
 
@@ -49,7 +45,6 @@ class Importer:
         self.cumulative_id = f"{self.id}_cum_abs"
         self.daily_consumption_id = f"{self.id}_daily_cons"
         self.daily_meter_read_id = f"{self.id}_daily_meter_read"
-        self.daily_meter_read_abs_id = f"{self.id}_daily_meter_read_abs"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
@@ -133,8 +128,9 @@ class Importer:
             return False
 
         capabilities = self._statistics_metadata_capabilities()
-        requires_mean = capabilities["has_mean"] and DAILY_METER_READ_HAS_MEAN
-        has_required_mean = row.get("mean") is not None if requires_mean else True
+        has_required_mean = (
+            row.get("mean") is not None if capabilities["has_mean"] else True
+        )
         has_required_sum = (
             row.get("sum") is not None if capabilities["has_sum"] else True
         )
@@ -362,7 +358,7 @@ class Importer:
         async_add_external_statistics(self.hass, daily_metadata, daily_statistics)
 
     async def _backfill_daily_meter_read_from_existing_rows(self) -> None:
-        """Upgrade daily meter-read stream so rows carry state/sum (+ optional mean)."""
+        """Upgrade daily meter-read stream so rows always carry state/mean/sum."""
         existing_daily_meter_read = await self._get_last_inserted_statistics(
             self.daily_meter_read_id, {"state", "mean", "sum"}
         )
@@ -384,11 +380,7 @@ class Importer:
             return
 
         daily_meter_read_metadata = self.get_daily_meter_read_statistics_metadata()
-        daily_meter_read_abs_metadata = (
-            self.get_daily_meter_read_abs_statistics_metadata()
-        )
         daily_meter_read_statistics: list[StatisticData] = []
-        daily_meter_read_abs_statistics: list[StatisticData] = []
         previous_reading: float | None = None
         running_sum: float | None = None
         for row in rows:
@@ -407,19 +399,12 @@ class Importer:
                     delta = 0.0
                 running_sum += delta
             previous_reading = reading
-            row_data: dict[str, Any] = {
-                "start": row_start,
-                "state": reading,
-                "sum": running_sum,
-            }
-            if DAILY_METER_READ_HAS_MEAN:
-                row_data["mean"] = reading
-            daily_meter_read_statistics.append(StatisticData(**row_data))
-            daily_meter_read_abs_statistics.append(
+            daily_meter_read_statistics.append(
                 StatisticData(
                     start=row_start,
                     state=reading,
                     mean=reading,
+                    sum=running_sum,
                 )
             )
 
@@ -436,11 +421,6 @@ class Importer:
             daily_meter_read_metadata,
             daily_meter_read_statistics,
         )
-        async_add_external_statistics(
-            self.hass,
-            daily_meter_read_abs_metadata,
-            daily_meter_read_abs_statistics,
-        )
 
     def _ensure_statistics_metadata(self) -> None:
         """Ensure metadata is updated for existing statistic IDs across core versions."""
@@ -455,9 +435,6 @@ class Importer:
         if self.enable_daily_meter_read_statistics:
             async_add_external_statistics(
                 self.hass, self.get_daily_meter_read_statistics_metadata(), []
-            )
-            async_add_external_statistics(
-                self.hass, self.get_daily_meter_read_abs_statistics_metadata(), []
             )
 
     def prepare_start_off_point(self, last_inserted_stat):
@@ -652,16 +629,8 @@ class Importer:
         return self._build_statistics_metadata(
             statistic_id=self.daily_meter_read_id,
             name=f"{self.zaehlpunkt} daily meter read",
-            has_mean=DAILY_METER_READ_HAS_MEAN,
-            has_sum=True,
-        )
-
-    def get_daily_meter_read_abs_statistics_metadata(self):
-        return self._build_statistics_metadata(
-            statistic_id=self.daily_meter_read_abs_id,
-            name=f"{self.zaehlpunkt} daily meter read absolute",
             has_mean=True,
-            has_sum=False,
+            has_sum=True,
         )
 
     async def _initial_import_statistics(self):
@@ -912,9 +881,7 @@ class Importer:
             return
 
         metadata = self.get_daily_meter_read_statistics_metadata()
-        abs_metadata = self.get_daily_meter_read_abs_statistics_metadata()
         statistics: list[StatisticData] = []
-        abs_statistics: list[StatisticData] = []
         for day_key in sorted(daily_points.keys()):
             ts, reading_value = daily_points[day_key]
             reading = float(reading_value)
@@ -928,19 +895,12 @@ class Importer:
                     delta = 0.0
                 running_sum += delta
             previous_reading = reading
-            row_data: dict[str, Any] = {
-                "start": ts,
-                "state": reading,
-                "sum": running_sum,
-            }
-            if DAILY_METER_READ_HAS_MEAN:
-                row_data["mean"] = reading
-            statistics.append(StatisticData(**row_data))
-            abs_statistics.append(
+            statistics.append(
                 StatisticData(
                     start=ts,
                     state=reading,
                     mean=reading,
+                    sum=running_sum,
                 )
             )
 
@@ -953,7 +913,6 @@ class Importer:
             statistics[-1],
         )
         async_add_external_statistics(self.hass, metadata, statistics)
-        async_add_external_statistics(self.hass, abs_metadata, abs_statistics)
 
     async def _import_statistics(self, start: datetime = None, end: datetime = None, total_usage: Decimal = Decimal(0)):
         """Import statistics"""

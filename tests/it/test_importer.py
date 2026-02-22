@@ -296,9 +296,7 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
 
 
 @pytest.mark.asyncio
-async def test_import_daily_meter_read_statistics_emits_energy_and_absolute_streams(
-    monkeypatch,
-):
+async def test_import_daily_meter_read_statistics_emits_energy_stream(monkeypatch):
     calls: list[tuple[tuple, dict]] = []
 
     def _capture(*args, **kwargs):
@@ -338,7 +336,7 @@ async def test_import_daily_meter_read_statistics_emits_energy_and_absolute_stre
 
     await importer._import_daily_meter_read_statistics(start=start, end=end)
 
-    assert len(calls) == 2
+    assert len(calls) == 1
 
     by_id: dict[str, tuple[object, object]] = {}
     for call_args, _kwargs in calls:
@@ -353,57 +351,26 @@ async def test_import_daily_meter_read_statistics_emits_energy_and_absolute_stre
     energy_id = next(
         statistic_id for statistic_id in by_id if statistic_id.endswith("_daily_meter_read")
     )
-    abs_id = next(
-        statistic_id
-        for statistic_id in by_id
-        if statistic_id.endswith("_daily_meter_read_abs")
-    )
 
     meter_read_metadata, meter_read_statistics = by_id[energy_id]
-    expected_has_mean = importer_module.DAILY_METER_READ_HAS_MEAN
     if isinstance(meter_read_metadata, dict):
         if "has_mean" in meter_read_metadata:
-            assert meter_read_metadata["has_mean"] is expected_has_mean
+            assert meter_read_metadata["has_mean"] is True
         if "has_sum" in meter_read_metadata:
             assert meter_read_metadata["has_sum"] is True
     else:
         if hasattr(meter_read_metadata, "has_mean"):
-            assert meter_read_metadata.has_mean is expected_has_mean
+            assert meter_read_metadata.has_mean is True
         if hasattr(meter_read_metadata, "has_sum"):
             assert meter_read_metadata.has_sum is True
     assert len(meter_read_statistics) == 2
     assert _stat_value(meter_read_statistics[0], "start").second == 0
     assert _stat_value(meter_read_statistics[0], "state") == pytest.approx(4444.0)
-    if expected_has_mean:
-        assert _stat_value(meter_read_statistics[0], "mean") == pytest.approx(4444.0)
-    else:
-        assert _stat_value(meter_read_statistics[0], "mean") is None
+    assert _stat_value(meter_read_statistics[0], "mean") == pytest.approx(4444.0)
     assert _stat_value(meter_read_statistics[0], "sum") == pytest.approx(4444.0)
     assert _stat_value(meter_read_statistics[1], "state") == pytest.approx(4446.5)
-    if expected_has_mean:
-        assert _stat_value(meter_read_statistics[1], "mean") == pytest.approx(4446.5)
-    else:
-        assert _stat_value(meter_read_statistics[1], "mean") is None
+    assert _stat_value(meter_read_statistics[1], "mean") == pytest.approx(4446.5)
     assert _stat_value(meter_read_statistics[1], "sum") == pytest.approx(4446.5)
-
-    abs_metadata, abs_statistics = by_id[abs_id]
-    if isinstance(abs_metadata, dict):
-        if "has_mean" in abs_metadata:
-            assert abs_metadata["has_mean"] is True
-        if "has_sum" in abs_metadata:
-            assert abs_metadata["has_sum"] is False
-    else:
-        if hasattr(abs_metadata, "has_mean"):
-            assert abs_metadata.has_mean is True
-        if hasattr(abs_metadata, "has_sum"):
-            assert abs_metadata.has_sum is False
-    assert len(abs_statistics) == 2
-    assert _stat_value(abs_statistics[0], "state") == pytest.approx(4444.0)
-    assert _stat_value(abs_statistics[0], "mean") == pytest.approx(4444.0)
-    assert _stat_value(abs_statistics[0], "sum") is None
-    assert _stat_value(abs_statistics[1], "state") == pytest.approx(4446.5)
-    assert _stat_value(abs_statistics[1], "mean") == pytest.approx(4446.5)
-    assert _stat_value(abs_statistics[1], "sum") is None
 
 
 @pytest.mark.asyncio
@@ -513,7 +480,7 @@ def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatc
     assert importer.is_last_inserted_daily_consumption_stat_valid(last_inserted) is True
 
 
-def test_daily_meter_read_stat_validity_respects_mean_toggle(monkeypatch):
+def test_daily_meter_read_stat_validity_requires_mean_when_supported(monkeypatch):
     importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
 
     monkeypatch.setattr(
@@ -529,13 +496,13 @@ def test_daily_meter_read_stat_validity_respects_mean_toggle(monkeypatch):
             }
         ]
     }
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is False
+
+    last_inserted[importer.daily_meter_read_id][0]["mean"] = 4444.0
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is False
+
     last_inserted[importer.daily_meter_read_id][0]["sum"] = 4444.0
-    if importer_module.DAILY_METER_READ_HAS_MEAN:
-        assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is False
-        last_inserted[importer.daily_meter_read_id][0]["mean"] = 4444.0
-        assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is True
-    else:
-        assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is True
+    assert importer.is_last_inserted_daily_meter_read_stat_valid(last_inserted) is True
 
 
 def test_ensure_statistics_metadata_skips_daily_meter_read_when_disabled(monkeypatch):
@@ -557,7 +524,6 @@ def test_ensure_statistics_metadata_skips_daily_meter_read_when_disabled(monkeyp
 
     assert any(statistic_id.endswith("_daily_cons") for statistic_id in calls)
     assert not any(statistic_id.endswith("_daily_meter_read") for statistic_id in calls)
-    assert not any(statistic_id.endswith("_daily_meter_read_abs") for statistic_id in calls)
 
 
 @pytest.mark.asyncio

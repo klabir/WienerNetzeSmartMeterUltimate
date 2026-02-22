@@ -16,7 +16,7 @@
           "scan_interval": "Scan interval (minutes)",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs)."
+          "enable_daily_meter_read": "Enable daily total consumption historical values and statistics (Suffix _daily_meter_read)."
         }        
       },
       "select_meters": {
@@ -40,7 +40,7 @@
           "scan_interval": "Scan interval (minutes)",
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).",
+          "enable_daily_meter_read": "Enable daily total consumption historical values and statistics (Suffix _daily_meter_read).",
           "selected_zaehlpunkte": "Meters"
         }
       }
