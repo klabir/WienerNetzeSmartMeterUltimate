@@ -10,6 +10,7 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import WNSMDataUpdateCoordinator
+from .naming import build_main_entity_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,8 +37,8 @@ class WNSMSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
         self._attr_native_value: int | float | None = 0
         self._attr_extra_state_attributes = {}
         self._attr_name = display_name
-        self._attr_unique_id = entity_id_key
-        self._attr_suggested_object_id = entity_id_key
+        self._attr_unique_id = build_main_entity_unique_id(entity_id_key)
+        self._attr_suggested_object_id = build_main_entity_unique_id(entity_id_key)
         self._attr_icon = self._icon()
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_device_class = SensorDeviceClass.ENERGY

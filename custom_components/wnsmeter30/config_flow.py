@@ -29,6 +29,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
+from .naming import normalize_meter_aliases
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
@@ -144,17 +145,7 @@ def _normalize_selected_meters(selected: Any) -> list[str]:
 def _normalize_meter_aliases(
     aliases: Any, allowed_meter_ids: set[str] | None = None
 ) -> dict[str, str]:
-    if not isinstance(aliases, dict):
-        return {}
-    normalized: dict[str, str] = {}
-    for meter_id, alias in aliases.items():
-        meter_id_str = str(meter_id)
-        if allowed_meter_ids is not None and meter_id_str not in allowed_meter_ids:
-            continue
-        alias_str = str(alias).strip()
-        if alias_str:
-            normalized[meter_id_str] = alias_str
-    return normalized
+    return normalize_meter_aliases(aliases, allowed_meter_ids)
 
 
 def _build_meter_alias_defaults(

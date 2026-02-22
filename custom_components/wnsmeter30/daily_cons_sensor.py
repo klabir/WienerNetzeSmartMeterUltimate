@@ -4,6 +4,7 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import WNSMDataUpdateCoordinator
+from .naming import build_daily_cons_unique_id
 
 
 class WNSMDailyConsSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEntity):
@@ -15,8 +16,8 @@ class WNSMDailyConsSensor(CoordinatorEntity[WNSMDataUpdateCoordinator], SensorEn
         display_name = coordinator.display_name(zaehlpunkt)
         entity_id_key = coordinator.entity_id_key(zaehlpunkt)
         self._attr_name = f"{display_name} daily cons"
-        self._attr_unique_id = f"{entity_id_key}_daily_cons"
-        self._attr_suggested_object_id = f"{entity_id_key}_daily_cons"
+        self._attr_unique_id = build_daily_cons_unique_id(entity_id_key)
+        self._attr_suggested_object_id = build_daily_cons_unique_id(entity_id_key)
         self._attr_icon = "mdi:calendar-month"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR

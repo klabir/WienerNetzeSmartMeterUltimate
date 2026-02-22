@@ -18,12 +18,12 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api.constants import ValueType
 from .const import DEFAULT_HISTORICAL_DAYS, DOMAIN
+from .naming import build_statistics_ids
 
 _LOGGER = logging.getLogger(__name__)
 _DAILY_IMPORT_RETRY_INTERVAL = timedelta(hours=1)
@@ -46,14 +46,11 @@ class Importer:
         enable_daily_consumption_statistics: bool = True,
         enable_daily_meter_read_statistics: bool = True,
     ):
-        base_id_source = statistic_id_base or zaehlpunkt.lower()
-        base_id = slugify(base_id_source).lower()
-        if not base_id:
-            base_id = zaehlpunkt.lower()
-        self.id = f"{DOMAIN}:{base_id}"
-        self.cumulative_id = f"{self.id}_cum_abs"
-        self.daily_consumption_id = f"{self.id}_daily_cons"
-        self.daily_meter_read_id = f"{self.id}_meter_read"
+        statistic_ids = build_statistics_ids(zaehlpunkt, statistic_id_base)
+        self.id = statistic_ids["base"]
+        self.cumulative_id = statistic_ids["cumulative"]
+        self.daily_consumption_id = statistic_ids["daily_cons"]
+        self.daily_meter_read_id = statistic_ids["meter_read"]
         self.zaehlpunkt = zaehlpunkt
         self.display_name = display_name or zaehlpunkt
         self.granularity = granularity

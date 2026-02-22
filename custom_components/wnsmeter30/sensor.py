@@ -29,6 +29,7 @@ from .const import (
 from .daily_cons_day_sensor import WNSMDailyConsDaySensor
 from .coordinator import WNSMDataUpdateCoordinator
 from .daily_cons_sensor import WNSMDailyConsSensor
+from .naming import normalize_meter_aliases
 from .wnsm_sensor import WNSMSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,19 +74,7 @@ def _resolve_zaehlpunkt_aliases(
         CONF_ZAEHLPUNKT_ALIASES,
         config.get(CONF_ZAEHLPUNKT_ALIASES, {}),
     )
-    if not isinstance(raw_aliases, dict):
-        return {}
-
-    selected = set(selected_meters)
-    aliases: dict[str, str] = {}
-    for meter_id, alias in raw_aliases.items():
-        meter_id_str = str(meter_id)
-        if meter_id_str not in selected:
-            continue
-        alias_str = str(alias).strip()
-        if alias_str:
-            aliases[meter_id_str] = alias_str
-    return aliases
+    return normalize_meter_aliases(raw_aliases, set(selected_meters))
 
 
 async def async_setup_entry(
