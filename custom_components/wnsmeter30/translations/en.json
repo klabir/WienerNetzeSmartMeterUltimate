@@ -32,7 +32,7 @@
       },
       "meter_aliases": {
         "title": "Meter aliases",
-        "description": "Set optional aliases for selected meters. Leave empty to keep the meter ID as display name."
+        "description": "Change the Display Name of Reading Meter."
       }
     }
   },

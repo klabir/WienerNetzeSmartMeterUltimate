@@ -32,7 +32,7 @@
       },
       "meter_aliases": {
         "title": "Zähler-Aliase",
-        "description": "Optional Aliase für ausgewählte Zähler festlegen. Leer lassen, um die Zählernummer als Anzeigenamen zu verwenden."
+        "description": "Anzeigenamen für den Zählerstand ändern."
       }
     }
   },

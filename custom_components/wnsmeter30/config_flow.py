@@ -261,13 +261,15 @@ def _options_schema(
             CONF_SELECTED_ZAEHLPUNKTE,
             default=selected_meters,
         ): _meter_select_field(meter_options),
-        vol.Optional(
-            CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-            default=enable_raw_api_response_write,
-        ): cv.boolean,
     }
     for meter_id in selected_meters:
         fields[vol.Optional(meter_id, default=meter_aliases.get(meter_id, ""))] = cv.string
+    fields[
+        vol.Optional(
+            CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+            default=enable_raw_api_response_write,
+        )
+    ] = cv.boolean
     return vol.Schema(fields)
 
 

@@ -19,7 +19,7 @@ Nach dem Login oeffnet Home Assistant die Zaehlerauswahl. Lass die vorausgewaehl
 Standardmaessig sind aktive und smart-meter-bereite Zaehler vorausgewaehlt.
 Wenn kein Zaehler diesen Status hat, werden alle gefundenen Zaehler vorausgewaehlt.
 Inaktive Zaehler koennen in der Liste erscheinen.
-Nach der Zaehlerauswahl gibt es optional einen Alias-Schritt fuer kuerzere Anzeigenamen pro ausgewaehltem Zaehler.
+Nach der Zaehlerauswahl erscheint ein Alias-Schritt mit der Beschreibung: `Anzeigenamen für den Zählerstand ändern.`
 
 ![Wiener Netze Smartmeter - Zaehler auswaehlen](doc/SelectedMeters.png)
 

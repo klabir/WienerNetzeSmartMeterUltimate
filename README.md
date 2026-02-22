@@ -19,7 +19,7 @@ After login, Home Assistant opens meter selection. Keep the preselected meters s
 By default, active and smart-meter-ready meters are preselected.
 If no meter matches that status, all discovered meters are preselected.
 Inactive meters can appear in the list.
-After meter selection, an alias step lets you set shorter display names per selected meter (optional).
+After meter selection, an alias step appears with the description: `Change the Display Name of Reading Meter.`
 
 ![Wiener Netze Smartmeter - Select meters](doc/SelectedMeters.png)
 
