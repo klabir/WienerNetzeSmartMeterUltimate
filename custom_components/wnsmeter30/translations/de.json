@@ -16,7 +16,7 @@
           "scan_interval": "Abfrageintervall (Minuten)",
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read)."
+          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffixe _daily_meter_read und _daily_meter_read_abs)."
         }
       },
       "select_meters": {
@@ -40,7 +40,7 @@
           "scan_interval": "Abfrageintervall (Minuten)",
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
-          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read).",
+          "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffixe _daily_meter_read und _daily_meter_read_abs).",
           "selected_zaehlpunkte": "Zähler"
         }
       }

@@ -44,6 +44,7 @@ Statistics view example (meter numbers blurred, suffixes kept readable):
 
 Important:
 - There is currently no dedicated `sensor.<zaehlpunkt>_daily_meter_read` entity.
+- There is currently no dedicated `sensor.<zaehlpunkt>_daily_meter_read_abs` entity.
 - `_daily_meter_read` is implemented as recorder statistics (see below).
 
 ## Recorder Statistics Streams
@@ -55,7 +56,8 @@ For each selected meter, these statistic IDs are used:
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Enabled | Always on |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Enabled | Always on |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Energy Dashboard stream (`sum` is monotonic). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs` | Enabled | Toggle: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Absolute meter-read stream (`state`/`mean`, no `sum`). |
 
 ## Configuration Defaults
 
@@ -63,7 +65,7 @@ Default values in the UI:
 - `Scan interval (minutes)`: `360` (6 hours)
 - `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 - `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
-- `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).`: `True`
+- `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).`: `True`
 - `Meters`: active/ready meters are pre-selected by default
 
 ## Toggle Behavior TEST
@@ -86,9 +88,11 @@ When disabled:
 When enabled (default):
 - Imports/maintains statistics stream:
   - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read`
+  - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs`
 
 When disabled:
 - No new `_daily_meter_read` statistics are imported.
+- No new `_daily_meter_read_abs` statistics are imported.
 - Existing other sensors/entities are unaffected.
 
 ## Typical Tile Card Example
@@ -218,6 +222,7 @@ In this example, Wiener Netze Smart Meter hardware was exchanged, and Total Cons
 
 If you have a Smart Meter hardware exchange, we recommend using statistics with suffix `_daily_meter_read`.
 Otherwise your daily value can be wrong.
+Do not use `_daily_meter_read_abs` for Energy Dashboard calculations.
 
 ## After Changing Options
 

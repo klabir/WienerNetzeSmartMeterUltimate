@@ -296,7 +296,9 @@ async def test_import_daily_consumption_statistics_emits_daily_cons_stream(monke
 
 
 @pytest.mark.asyncio
-async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypatch):
+async def test_import_daily_meter_read_statistics_emits_energy_and_absolute_streams(
+    monkeypatch,
+):
     calls: list[tuple[tuple, dict]] = []
 
     def _capture(*args, **kwargs):
@@ -336,17 +338,28 @@ async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypa
 
     await importer._import_daily_meter_read_statistics(start=start, end=end)
 
-    assert len(calls) == 1
+    assert len(calls) == 2
 
-    meter_read_call_args = calls[0][0]
-    meter_read_metadata = meter_read_call_args[1]
-    meter_read_statistics = meter_read_call_args[2]
-    meter_read_statistic_id = (
-        meter_read_metadata.get("statistic_id")
-        if isinstance(meter_read_metadata, dict)
-        else meter_read_metadata.statistic_id
+    by_id: dict[str, tuple[object, object]] = {}
+    for call_args, _kwargs in calls:
+        metadata = call_args[1]
+        statistic_id = (
+            metadata.get("statistic_id")
+            if isinstance(metadata, dict)
+            else metadata.statistic_id
+        )
+        by_id[statistic_id] = (metadata, call_args[2])
+
+    energy_id = next(
+        statistic_id for statistic_id in by_id if statistic_id.endswith("_daily_meter_read")
     )
-    assert meter_read_statistic_id.endswith("_daily_meter_read")
+    abs_id = next(
+        statistic_id
+        for statistic_id in by_id
+        if statistic_id.endswith("_daily_meter_read_abs")
+    )
+
+    meter_read_metadata, meter_read_statistics = by_id[energy_id]
     if isinstance(meter_read_metadata, dict):
         if "has_mean" in meter_read_metadata:
             assert meter_read_metadata["has_mean"] is True
@@ -365,6 +378,106 @@ async def test_import_daily_meter_read_statistics_emits_absolute_stream(monkeypa
     assert _stat_value(meter_read_statistics[1], "state") == pytest.approx(4446.5)
     assert _stat_value(meter_read_statistics[1], "mean") == pytest.approx(4446.5)
     assert _stat_value(meter_read_statistics[1], "sum") == pytest.approx(4446.5)
+
+    abs_metadata, abs_statistics = by_id[abs_id]
+    if isinstance(abs_metadata, dict):
+        if "has_mean" in abs_metadata:
+            assert abs_metadata["has_mean"] is True
+        if "has_sum" in abs_metadata:
+            assert abs_metadata["has_sum"] is False
+    else:
+        if hasattr(abs_metadata, "has_mean"):
+            assert abs_metadata.has_mean is True
+        if hasattr(abs_metadata, "has_sum"):
+            assert abs_metadata.has_sum is False
+    assert len(abs_statistics) == 2
+    assert _stat_value(abs_statistics[0], "state") == pytest.approx(4444.0)
+    assert _stat_value(abs_statistics[0], "mean") == pytest.approx(4444.0)
+    assert _stat_value(abs_statistics[0], "sum") is None
+    assert _stat_value(abs_statistics[1], "state") == pytest.approx(4446.5)
+    assert _stat_value(abs_statistics[1], "mean") == pytest.approx(4446.5)
+    assert _stat_value(abs_statistics[1], "sum") is None
+
+
+@pytest.mark.asyncio
+async def test_import_daily_meter_read_statistics_keeps_sum_continuous_across_runs(
+    monkeypatch,
+):
+    calls: list[tuple[tuple, dict]] = []
+
+    def _capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(importer_module, "async_add_external_statistics", _capture)
+
+    importer = _build_importer(
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        },
+        {
+            "unitOfMeasurement": "KWH",
+            "values": [],
+        },
+        {
+            "unitOfMeasurement": "WH",
+            "values": [
+                {
+                    "messwert": 4447000,
+                    "zeitVon": "2025-01-03T23:00:00Z",
+                    "zeitBis": "2025-01-04T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+                {
+                    "messwert": 4446000,
+                    "zeitVon": "2025-01-04T23:00:00Z",
+                    "zeitBis": "2025-01-05T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+            ],
+        },
+    )
+
+    async def _fake_get_last_inserted_statistics(
+        statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        assert number_of_stats == 1
+        if statistic_id == importer.daily_meter_read_id:
+            return {
+                importer.daily_meter_read_id: [
+                    {
+                        "state": 4446.5,
+                        "mean": 4446.5,
+                        "sum": 25.0,
+                        "end": "2025-01-03T00:00:00+00:00",
+                    }
+                ]
+            }
+        return {}
+
+    monkeypatch.setattr(
+        importer,
+        "_get_last_inserted_statistics",
+        _fake_get_last_inserted_statistics,
+    )
+
+    await importer._import_daily_meter_read_statistics()
+
+    energy_call_args = next(
+        args
+        for args, _kwargs in calls
+        if (
+            args[1].get("statistic_id")
+            if isinstance(args[1], dict)
+            else args[1].statistic_id
+        ).endswith("_daily_meter_read")
+    )
+    energy_statistics = energy_call_args[2]
+    assert len(energy_statistics) == 2
+    assert _stat_value(energy_statistics[0], "state") == pytest.approx(4447.0)
+    assert _stat_value(energy_statistics[0], "sum") == pytest.approx(25.5)
+    assert _stat_value(energy_statistics[1], "state") == pytest.approx(4446.0)
+    assert _stat_value(energy_statistics[1], "sum") == pytest.approx(25.5)
 
 
 def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatch):
@@ -437,6 +550,7 @@ def test_ensure_statistics_metadata_skips_daily_meter_read_when_disabled(monkeyp
 
     assert any(statistic_id.endswith("_daily_cons") for statistic_id in calls)
     assert not any(statistic_id.endswith("_daily_meter_read") for statistic_id in calls)
+    assert not any(statistic_id.endswith("_daily_meter_read_abs") for statistic_id in calls)
 
 
 @pytest.mark.asyncio

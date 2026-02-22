@@ -44,6 +44,7 @@ Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
 
 Wichtig:
 - Es gibt derzeit keine dedizierte `sensor.<zaehlpunkt>_daily_meter_read` Entitaet.
+- Es gibt derzeit keine dedizierte `sensor.<zaehlpunkt>_daily_meter_read_abs` Entitaet.
 - `_daily_meter_read` ist als Recorder-Statistik umgesetzt (siehe unten).
 
 ## Recorder-Statistik-Streams
@@ -55,7 +56,8 @@ Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Energy-Dashboard-Stream (`sum` ist monoton). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs` | Aktiviert | Schalter: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Absoluter Zaehlerstand-Stream (`state`/`mean`, ohne `sum`). |
 
 ## Konfigurationsstandardwerte
 
@@ -63,7 +65,7 @@ Standardwerte in der UI:
 - `Scan interval (minutes)`: `360` (6 Stunden)
 - `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 - `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
-- `Enable daily total consumption historical values, statistics (Suffix  _daily_meter_read).`: `True`
+- `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).`: `True`
 - `Meters`: aktive/bereite Zaehler sind standardmaessig vorausgewaehlt
 
 ## Schalterverhalten TEST
@@ -86,9 +88,11 @@ Wenn deaktiviert:
 Wenn aktiviert (Standard):
 - Importiert/pflegt Statistik-Stream:
   - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read`
+  - `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs`
 
 Wenn deaktiviert:
 - Es werden keine neuen `_daily_meter_read` Statistiken importiert.
+- Es werden keine neuen `_daily_meter_read_abs` Statistiken importiert.
 - Vorhandene andere Sensoren/Entitaeten bleiben unveraendert.
 
 ## Typisches Tile Card Beispiel
@@ -218,6 +222,7 @@ In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware getauscht, und Tot
 
 Wenn bei dir ein Smartmeter-Hardwaretausch stattgefunden hat, empfehlen wir die Nutzung der Statistik mit Suffix `_daily_meter_read`.
 Andernfalls kann dein Tageswert falsch sein.
+Verwende `_daily_meter_read_abs` nicht fuer Berechnungen im Energy Dashboard.
 
 ## Nach dem Aendern von Optionen
 

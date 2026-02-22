@@ -45,6 +45,7 @@ class Importer:
         self.cumulative_id = f"{self.id}_cum_abs"
         self.daily_consumption_id = f"{self.id}_daily_cons"
         self.daily_meter_read_id = f"{self.id}_daily_meter_read"
+        self.daily_meter_read_abs_id = f"{self.id}_daily_meter_read_abs"
         self.zaehlpunkt = zaehlpunkt
         self.granularity = granularity
         self.unit_of_measurement = unit_of_measurement
@@ -380,7 +381,13 @@ class Importer:
             return
 
         daily_meter_read_metadata = self.get_daily_meter_read_statistics_metadata()
+        daily_meter_read_abs_metadata = (
+            self.get_daily_meter_read_abs_statistics_metadata()
+        )
         daily_meter_read_statistics: list[StatisticData] = []
+        daily_meter_read_abs_statistics: list[StatisticData] = []
+        previous_reading: float | None = None
+        running_sum: float | None = None
         for row in rows:
             row_value = row.get("state")
             if row_value is None:
@@ -388,12 +395,28 @@ class Importer:
             row_start = self._to_datetime(row.get("start"))
             if row_value is None or row_start is None:
                 continue
+            reading = float(row_value)
+            if running_sum is None:
+                running_sum = reading
+            else:
+                delta = 0.0 if previous_reading is None else reading - previous_reading
+                if delta < 0:
+                    delta = 0.0
+                running_sum += delta
+            previous_reading = reading
             daily_meter_read_statistics.append(
                 StatisticData(
                     start=row_start,
-                    state=float(row_value),
-                    mean=float(row_value),
-                    sum=float(row_value),
+                    state=reading,
+                    mean=reading,
+                    sum=running_sum,
+                )
+            )
+            daily_meter_read_abs_statistics.append(
+                StatisticData(
+                    start=row_start,
+                    state=reading,
+                    mean=reading,
                 )
             )
 
@@ -410,6 +433,11 @@ class Importer:
             daily_meter_read_metadata,
             daily_meter_read_statistics,
         )
+        async_add_external_statistics(
+            self.hass,
+            daily_meter_read_abs_metadata,
+            daily_meter_read_abs_statistics,
+        )
 
     def _ensure_statistics_metadata(self) -> None:
         """Ensure metadata is updated for existing statistic IDs across core versions."""
@@ -424,6 +452,9 @@ class Importer:
         if self.enable_daily_meter_read_statistics:
             async_add_external_statistics(
                 self.hass, self.get_daily_meter_read_statistics_metadata(), []
+            )
+            async_add_external_statistics(
+                self.hass, self.get_daily_meter_read_abs_statistics_metadata(), []
             )
 
     def prepare_start_off_point(self, last_inserted_stat):
@@ -622,6 +653,14 @@ class Importer:
             has_sum=True,
         )
 
+    def get_daily_meter_read_abs_statistics_metadata(self):
+        return self._build_statistics_metadata(
+            statistic_id=self.daily_meter_read_abs_id,
+            name=f"{self.zaehlpunkt} daily meter read absolute",
+            has_mean=True,
+            has_sum=False,
+        )
+
     async def _initial_import_statistics(self):
         return await self._import_statistics()
 
@@ -773,6 +812,8 @@ class Importer:
         start: datetime = None,
         end: datetime = None,
     ) -> None:
+        previous_reading: float | None = None
+        running_sum: float | None = None
         if start is None:
             last_inserted_stat = await self._get_last_inserted_statistics(
                 self.daily_meter_read_id,
@@ -788,6 +829,15 @@ class Importer:
                         row.get("end"),
                     )
                     return
+                previous_reading = self._stat_row_value(row)
+                row_sum = row.get("sum")
+                if row_sum is not None:
+                    try:
+                        running_sum = float(row_sum)
+                    except (TypeError, ValueError):
+                        running_sum = previous_reading
+                else:
+                    running_sum = previous_reading
             else:
                 start = (
                     datetime.now(timezone.utc)
@@ -859,9 +909,9 @@ class Importer:
             return
 
         metadata = self.get_daily_meter_read_statistics_metadata()
+        abs_metadata = self.get_daily_meter_read_abs_statistics_metadata()
         statistics: list[StatisticData] = []
-        previous_reading: float | None = None
-        running_sum: float | None = None
+        abs_statistics: list[StatisticData] = []
         for day_key in sorted(daily_points.keys()):
             ts, reading_value = daily_points[day_key]
             reading = float(reading_value)
@@ -883,6 +933,13 @@ class Importer:
                     sum=running_sum,
                 )
             )
+            abs_statistics.append(
+                StatisticData(
+                    start=ts,
+                    state=reading,
+                    mean=reading,
+                )
+            )
 
         if len(statistics) == 0:
             return
@@ -893,6 +950,7 @@ class Importer:
             statistics[-1],
         )
         async_add_external_statistics(self.hass, metadata, statistics)
+        async_add_external_statistics(self.hass, abs_metadata, abs_statistics)
 
     async def _import_statistics(self, start: datetime = None, end: datetime = None, total_usage: Decimal = Decimal(0)):
         """Import statistics"""
