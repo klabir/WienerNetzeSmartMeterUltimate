@@ -415,7 +415,7 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
                     aliases[meter_id] = alias_value
             self.data[CONF_ZAEHLPUNKT_ALIASES] = aliases
             return self.async_create_entry(
-                title="WienerNetzeSmartmeter 3.0", data=self.data
+                title="Wiener Netze Smartmeter Ultimate", data=self.data
             )
 
         return self.async_show_form(

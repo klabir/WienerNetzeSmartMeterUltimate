@@ -5,11 +5,11 @@
       "connection_error": "Unable to connect",
       "no_meter_selected": "Select at least one meter"
     },
-    "flow_title": "WienerNetzeSmartmeter 3.0",
+    "flow_title": "Wiener Netze Smartmeter Ultimate",
     "step": {
       "user": {
-        "title": "WienerNetzeSmartmeter 3.0 Authentication",
-        "description": "Enter your WienerNetzeSmartmeter 3.0 credentials",
+        "title": "Wiener Netze Smartmeter Ultimate Authentication",
+        "description": "Enter your Wiener Netze Smartmeter Ultimate credentials",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -42,7 +42,7 @@
     },
     "step": {
       "init": {
-        "title": "WienerNetzeSmartmeter 3.0 Options",
+        "title": "Wiener Netze Smartmeter Ultimate Options",
         "description": "Configure polling behavior. Saving automatically reloads the integration.",
         "data": {
           "scan_interval": "Scan interval (minutes)",

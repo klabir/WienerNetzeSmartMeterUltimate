@@ -1,4 +1,4 @@
-# Wiener Netze Smartmeter 3.0 (WNSM30) - User Documentation
+# Wiener Netze Smartmeter Ultimate - User Documentation
 
 This integration imports Wiener Netze smart meter data into Home Assistant and exposes:
 - sensor entities
@@ -8,6 +8,7 @@ This integration imports Wiener Netze smart meter data into Home Assistant and e
 
 This custom component is configurable through the Home Assistant UI only.
 YAML configuration is not supported.
+Custom component folder name: `custom_components/wnsmeter30`.
 
 ## Initial Setup (Login Screen)
 
