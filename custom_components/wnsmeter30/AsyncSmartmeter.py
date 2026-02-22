@@ -1,14 +1,23 @@
 import asyncio
 import logging
 from asyncio import Future
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .api import Smartmeter
 from .api.constants import ValueType
-from .const import ATTRS_METERREADINGS_CALL, ATTRS_BASEINFORMATION_CALL, ATTRS_CONSUMPTIONS_CALL, ATTRS_BEWEGUNGSDATEN, ATTRS_ZAEHLPUNKTE_CALL, ATTRS_HISTORIC_DATA, ATTRS_VERBRAUCH_CALL
+from .const import (
+    ATTRS_METERREADINGS_CALL,
+    ATTRS_BASEINFORMATION_CALL,
+    ATTRS_CONSUMPTIONS_CALL,
+    ATTRS_BEWEGUNGSDATEN,
+    ATTRS_ZAEHLPUNKTE_CALL,
+    ATTRS_HISTORIC_DATA,
+    ATTRS_VERBRAUCH_CALL,
+    HISTORICAL_API_CHUNK_DAYS,
+)
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,6 +28,79 @@ class AsyncSmartmeter:
         self.hass = hass
         self.smartmeter = smartmeter
         self.login_lock = asyncio.Lock()
+
+    @staticmethod
+    def _ensure_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            return value.replace(tzinfo=timezone.utc)
+        return dt_util.as_utc(value)
+
+    @classmethod
+    def _build_chunk_ranges(
+        cls, start: datetime | None, end: datetime | None
+    ) -> list[tuple[datetime | None, datetime | None]]:
+        if start is None or end is None:
+            return [(start, end)]
+        start_utc = cls._ensure_utc(start)
+        end_utc = cls._ensure_utc(end)
+        if start_utc is None or end_utc is None:
+            return [(start, end)]
+        start_day = start_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_day = end_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        if start_day > end_day:
+            return []
+
+        ranges: list[tuple[datetime, datetime]] = []
+        current_start = start_day
+        span_days = max(1, HISTORICAL_API_CHUNK_DAYS)
+        while current_start <= end_day:
+            current_end = min(
+                current_start + timedelta(days=span_days - 1),
+                end_day,
+            )
+            ranges.append((current_start, current_end))
+            current_start = current_end + timedelta(days=1)
+
+        if len(ranges) > 1:
+            _LOGGER.debug(
+                "Chunking historical request into %d calls (chunk size %d days)",
+                len(ranges),
+                span_days,
+            )
+        return ranges
+
+    @staticmethod
+    def _extract_timestamp(value: dict[str, any]) -> datetime | None:
+        return dt_util.parse_datetime(
+            value.get("zeitpunktVon")
+            or value.get("zeitVon")
+            or value.get("zeitpunktBis")
+            or value.get("zeitBis")
+        )
+
+    @classmethod
+    def _sort_values(cls, values: list[dict[str, any]]) -> list[dict[str, any]]:
+        def _sort_key(item: dict[str, any]) -> tuple[int, datetime]:
+            ts = cls._extract_timestamp(item)
+            if ts is None:
+                return (1, datetime.max.replace(tzinfo=timezone.utc))
+            return (0, cls._ensure_utc(ts) or datetime.max.replace(tzinfo=timezone.utc))
+
+        return sorted(values, key=_sort_key)
+
+    @classmethod
+    def _deduplicate_values(cls, values: list[dict[str, any]]) -> list[dict[str, any]]:
+        deduplicated: dict[str, dict[str, any]] = {}
+        for index, value in enumerate(values):
+            ts = cls._extract_timestamp(value)
+            if ts is None:
+                key = f"idx:{index}"
+            else:
+                key = (cls._ensure_utc(ts) or ts).isoformat()
+            deduplicated[key] = value
+        return cls._sort_values(list(deduplicated.values()))
 
     async def login(self) -> Future:
         async with self.login_lock:
@@ -118,31 +200,47 @@ class AsyncSmartmeter:
         date_to: datetime = None,
     ) -> dict[str, any]:
         """Return daily consumption history from historical data (`wertetyp=DAY`)."""
-        response = await self.hass.async_add_executor_job(
-            self.smartmeter.historical_day_consumption,
-            zaehlpunkt,
-            date_from,
-            date_to,
-        )
-        if "Exception" in response:
-            raise RuntimeError(f"Cannot access daily historic data: {response}")
-        _LOGGER.debug(f"Raw daily historic data: {response}")
+        ranges = self._build_chunk_ranges(date_from, date_to)
+        responses: list[dict[str, any]] = []
+        if len(ranges) == 0:
+            return {"obisCode": None, "unitOfMeasurement": None, "values": []}
 
-        values = []
-        for value in response.get("messwerte", []):
-            quality = str(value.get("qualitaet", "")).upper()
-            values.append(
-                {
-                    "wert": value.get("messwert"),
-                    "zeitpunktVon": value.get("zeitVon"),
-                    "zeitpunktBis": value.get("zeitBis"),
-                    "geschaetzt": quality not in {"", "VAL"},
-                }
+        for range_start, range_end in ranges:
+            response = await self.hass.async_add_executor_job(
+                self.smartmeter.historical_day_consumption,
+                zaehlpunkt,
+                range_start,
+                range_end,
             )
+            if "Exception" in response:
+                raise RuntimeError(f"Cannot access daily historic data: {response}")
+            _LOGGER.debug(f"Raw daily historic data: {response}")
+            responses.append(response)
+
+        values: list[dict[str, any]] = []
+        for response in responses:
+            for value in response.get("messwerte", []):
+                quality = str(value.get("qualitaet", "")).upper()
+                values.append(
+                    {
+                        "wert": value.get("messwert"),
+                        "zeitpunktVon": value.get("zeitVon"),
+                        "zeitpunktBis": value.get("zeitBis"),
+                        "geschaetzt": quality not in {"", "VAL"},
+                    }
+                )
+
+        values = self._deduplicate_values(values)
+
+        obis_code = None
+        unit = None
+        for response in responses:
+            obis_code = response.get("obisCode") or obis_code
+            unit = response.get("einheit") or unit
 
         return {
-            "obisCode": response.get("obisCode"),
-            "unitOfMeasurement": response.get("einheit"),
+            "obisCode": obis_code,
+            "unitOfMeasurement": unit,
             "values": values,
         }
 
@@ -189,16 +287,36 @@ class AsyncSmartmeter:
         end_date: datetime = None,
     ) -> dict[str, any]:
         """Return historical meter reading values (`wertetyp=METER_READ`)."""
-        response = await self.hass.async_add_executor_job(
-            self.smartmeter.historical_meter_reading,
-            zaehlpunkt,
-            start_date,
-            end_date,
-        )
-        if "Exception" in response:
-            raise RuntimeError(f"Cannot access historic data: {response}")
-        _LOGGER.debug(f"Raw historical data: {response}")
-        return translate_dict(response, ATTRS_HISTORIC_DATA)
+        ranges = self._build_chunk_ranges(start_date, end_date)
+        translated_chunks: list[dict[str, any]] = []
+        if len(ranges) == 0:
+            return {"obisCode": None, "unitOfMeasurement": None, "values": []}
+
+        for range_start, range_end in ranges:
+            response = await self.hass.async_add_executor_job(
+                self.smartmeter.historical_meter_reading,
+                zaehlpunkt,
+                range_start,
+                range_end,
+            )
+            if "Exception" in response:
+                raise RuntimeError(f"Cannot access historic data: {response}")
+            _LOGGER.debug(f"Raw historical data: {response}")
+            translated_chunks.append(translate_dict(response, ATTRS_HISTORIC_DATA))
+
+        values: list[dict[str, any]] = []
+        obis_code = None
+        unit = None
+        for translated in translated_chunks:
+            values.extend(translated.get("values", []) or [])
+            obis_code = translated.get("obisCode") or obis_code
+            unit = translated.get("unitOfMeasurement") or unit
+
+        return {
+            "obisCode": obis_code,
+            "unitOfMeasurement": unit,
+            "values": self._deduplicate_values(values),
+        }
 
     @staticmethod
     def is_active(zaehlpunkt_response: dict) -> bool:
@@ -214,17 +332,33 @@ class AsyncSmartmeter:
 
     async def get_bewegungsdaten(self, zaehlpunkt: str, start: datetime = None, end: datetime = None, granularity: ValueType = ValueType.QUARTER_HOUR):
         """Return three years of historic quarter-hourly data"""
-        response = await self.hass.async_add_executor_job(
-            self.smartmeter.bewegungsdaten,
-            zaehlpunkt,
-            start,
-            end,
-            granularity
-        )
-        if "Exception" in response:
-            raise RuntimeError(f"Cannot access bewegungsdaten: {response}")
-        _LOGGER.debug(f"Raw bewegungsdaten: {response}")
-        return translate_dict(response, ATTRS_BEWEGUNGSDATEN)
+        ranges = self._build_chunk_ranges(start, end)
+        translated_chunks: list[dict[str, any]] = []
+        if len(ranges) == 0:
+            return {"values": []}
+
+        for range_start, range_end in ranges:
+            response = await self.hass.async_add_executor_job(
+                self.smartmeter.bewegungsdaten,
+                zaehlpunkt,
+                range_start,
+                range_end,
+                granularity
+            )
+            if "Exception" in response:
+                raise RuntimeError(f"Cannot access bewegungsdaten: {response}")
+            _LOGGER.debug(f"Raw bewegungsdaten: {response}")
+            translated_chunks.append(translate_dict(response, ATTRS_BEWEGUNGSDATEN))
+
+        values: list[dict[str, any]] = []
+        merged: dict[str, any] = {}
+        for index, translated in enumerate(translated_chunks):
+            if index == 0:
+                merged = dict(translated)
+            values.extend(translated.get("values", []) or [])
+
+        merged["values"] = self._deduplicate_values(values)
+        return merged
 
     async def get_consumptions(self) -> dict[str, str]:
         """

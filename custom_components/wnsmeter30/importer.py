@@ -22,7 +22,7 @@ from homeassistant.util.unit_conversion import EnergyConverter
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api.constants import ValueType
-from .const import DOMAIN
+from .const import DEFAULT_HISTORICAL_DAYS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ class Importer:
         granularity: ValueType = ValueType.QUARTER_HOUR,
         skip_login: bool = False,
         preloaded_zaehlpunkt: dict | None = None,
+        historical_days: int = DEFAULT_HISTORICAL_DAYS,
         enable_daily_consumption_statistics: bool = True,
         enable_daily_meter_read_statistics: bool = True,
     ):
@@ -52,6 +53,11 @@ class Importer:
         self.async_smartmeter = async_smartmeter
         self.skip_login = skip_login
         self.preloaded_zaehlpunkt = preloaded_zaehlpunkt
+        try:
+            historical_days_int = int(historical_days)
+        except (TypeError, ValueError):
+            historical_days_int = DEFAULT_HISTORICAL_DAYS
+        self.historical_days = max(1, historical_days_int)
         self.enable_daily_consumption_statistics = enable_daily_consumption_statistics
         self.enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
         self._latest_daily_consumption_day_value: float | None = None
@@ -198,6 +204,11 @@ class Importer:
                 return None
             return dt_util.as_utc(parsed)
         return None
+
+    def _historical_default_start(self) -> datetime:
+        return datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=self.historical_days)
 
     async def _get_last_inserted_statistics(
         self,
@@ -698,11 +709,7 @@ class Importer:
                     return total_usage
                 total_usage = Decimal(row["sum"])
             else:
-                start = (
-                    datetime.now(timezone.utc)
-                    .replace(hour=0, minute=0, second=0, microsecond=0)
-                    - timedelta(days=365 * 3)
-                )
+                start = self._historical_default_start()
 
         if end is None:
             end = datetime.now(timezone.utc).replace(
@@ -811,11 +818,7 @@ class Importer:
                 else:
                     running_sum = previous_reading
             else:
-                start = (
-                    datetime.now(timezone.utc)
-                    .replace(hour=0, minute=0, second=0, microsecond=0)
-                    - timedelta(days=365 * 3)
-                )
+                start = self._historical_default_start()
 
         if end is None:
             end = datetime.now(timezone.utc).replace(
@@ -917,7 +920,7 @@ class Importer:
     async def _import_statistics(self, start: datetime = None, end: datetime = None, total_usage: Decimal = Decimal(0)):
         """Import statistics"""
 
-        start = start if start is not None else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=365 * 3)
+        start = start if start is not None else self._historical_default_start()
         end = end if end is not None else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
         if start.tzinfo is None:

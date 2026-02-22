@@ -13,12 +13,16 @@ from .const import (
     CONF_ENABLE_DAILY_METER_READ,
     ATTRS_ZAEHLPUNKTE_CALL,
     CONF_ENABLE_DAILY_CONS,
+    CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_HISTORICAL_DAYS,
+    HISTORICAL_API_CHUNK_DAYS,
+    MAX_HISTORICAL_DAYS,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
@@ -40,6 +44,38 @@ def _scan_interval_field(default_scan_interval: int):
         return selector.NumberSelector(selector.NumberSelectorConfig(**selector_config))
     except Exception:  # pylint: disable=broad-except
         return vol.All(vol.Coerce(int), vol.Range(min=5, max=720))
+
+
+def _historical_days_field(default_historical_days: int):
+    """Return a version-safe historical-days field."""
+    try:
+        selector_config: dict[str, Any] = {
+            "min": 1,
+            "max": MAX_HISTORICAL_DAYS,
+            "step": 1,
+            "unit_of_measurement": "days",
+        }
+        if hasattr(selector, "NumberSelectorMode"):
+            selector_config["mode"] = selector.NumberSelectorMode.BOX
+        return selector.NumberSelector(selector.NumberSelectorConfig(**selector_config))
+    except Exception:  # pylint: disable=broad-except
+        return vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_HISTORICAL_DAYS))
+
+
+def _normalize_historical_days(value: Any) -> int:
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        days = DEFAULT_HISTORICAL_DAYS
+    return max(1, min(MAX_HISTORICAL_DAYS, days))
+
+
+def _historical_days_description_placeholders() -> dict[str, str]:
+    return {
+        "historical_days_default": str(DEFAULT_HISTORICAL_DAYS),
+        "historical_days_limit": str(MAX_HISTORICAL_DAYS),
+        "historical_days_chunk": str(HISTORICAL_API_CHUNK_DAYS),
+    }
 
 
 def _meter_id(zp: dict[str, Any]) -> str | None:
@@ -116,7 +152,7 @@ def _meter_select_field(options: list[dict[str, str]]):
         return vol.All(cv.ensure_list, [vol.In(option_values)])
 
 
-def user_schema(default_scan_interval: int):
+def user_schema(default_scan_interval: int, default_historical_days: int):
     """Build user step schema."""
     return vol.Schema(
         {
@@ -126,6 +162,10 @@ def user_schema(default_scan_interval: int):
                 default_scan_interval
             ),
             vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
+            vol.Optional(
+                CONF_HISTORICAL_DAYS,
+                default=default_historical_days,
+            ): _historical_days_field(default_historical_days),
             vol.Optional(
                 CONF_ENABLE_DAILY_CONS, default=DEFAULT_ENABLE_DAILY_CONS
             ): cv.boolean,
@@ -185,6 +225,9 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
                     self._discovered_zaehlpunkte = zps
                     # Input is valid, set data
                     self.data = dict(user_input)
+                    self.data[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
+                        user_input.get(CONF_HISTORICAL_DAYS, DEFAULT_HISTORICAL_DAYS)
+                    )
                     self.data[CONF_ZAEHLPUNKTE] = [
                         translate_dict(zp, ATTRS_ZAEHLPUNKTE_CALL)
                         for zp in zps
@@ -194,7 +237,11 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
 
         return self.async_show_form(
             step_id="user",
-            data_schema=user_schema(DEFAULT_SCAN_INTERVAL_MINUTES),
+            data_schema=user_schema(
+                DEFAULT_SCAN_INTERVAL_MINUTES,
+                DEFAULT_HISTORICAL_DAYS,
+            ),
+            description_placeholders=_historical_days_description_placeholders(),
             errors=errors,
         )
 
@@ -273,6 +320,14 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
         ]
         if not current_selected_meters:
             current_selected_meters = default_selected
+        current_historical_days = _normalize_historical_days(
+            config_entry.options.get(
+                CONF_HISTORICAL_DAYS,
+                config_entry.data.get(
+                    CONF_HISTORICAL_DAYS, DEFAULT_HISTORICAL_DAYS
+                ),
+            )
+        )
 
         if user_input is not None:
             selected_meters = _normalize_selected_meters(
@@ -315,6 +370,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                                 ),
                             ): cv.boolean,
                             vol.Optional(
+                                CONF_HISTORICAL_DAYS,
+                                default=current_historical_days,
+                            ): _historical_days_field(current_historical_days),
+                            vol.Optional(
                                 CONF_ENABLE_DAILY_CONS,
                                 default=config_entry.options.get(
                                     CONF_ENABLE_DAILY_CONS,
@@ -340,10 +399,14 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                             ): _meter_select_field(meter_options),
                         }
                     ),
+                    description_placeholders=_historical_days_description_placeholders(),
                     errors={"base": "no_meter_selected"},
                 )
             user_input = dict(user_input)
             user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
+            user_input[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
+                user_input.get(CONF_HISTORICAL_DAYS, current_historical_days)
+            )
             self.hass.async_create_task(
                 self.hass.config_entries.async_reload(config_entry.entry_id)
             )
@@ -381,6 +444,10 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                         default=current_enable_raw_api_response_write,
                     ): cv.boolean,
                     vol.Optional(
+                        CONF_HISTORICAL_DAYS,
+                        default=current_historical_days,
+                    ): _historical_days_field(current_historical_days),
+                    vol.Optional(
                         CONF_ENABLE_DAILY_CONS,
                         default=current_enable_daily_cons,
                     ): cv.boolean,
@@ -394,4 +461,5 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                     ): _meter_select_field(meter_options),
                 }
             ),
+            description_placeholders=_historical_days_description_placeholders(),
         )

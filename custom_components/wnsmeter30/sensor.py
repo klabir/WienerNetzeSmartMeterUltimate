@@ -11,12 +11,15 @@ from homeassistant.const import (
 from .const import (
     CONF_ENABLE_DAILY_CONS,
     CONF_ENABLE_DAILY_METER_READ,
+    CONF_HISTORICAL_DAYS,
     CONF_ENABLE_RAW_API_RESPONSE_WRITE,
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_ZAEHLPUNKTE,
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_HISTORICAL_DAYS,
+    MAX_HISTORICAL_DAYS,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
@@ -88,6 +91,16 @@ async def async_setup_entry(
             config.get(CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ),
         )
     )
+    try:
+        historical_days = int(
+            config_entry.options.get(
+                CONF_HISTORICAL_DAYS,
+                config.get(CONF_HISTORICAL_DAYS, DEFAULT_HISTORICAL_DAYS),
+            )
+        )
+    except (TypeError, ValueError):
+        historical_days = DEFAULT_HISTORICAL_DAYS
+    historical_days = max(1, min(MAX_HISTORICAL_DAYS, historical_days))
     zaehlpunkte = _resolve_selected_zaehlpunkte(config_entry)
     coordinator = WNSMDataUpdateCoordinator(
         hass=hass,
@@ -95,6 +108,7 @@ async def async_setup_entry(
         password=config[CONF_PASSWORD],
         zaehlpunkte=zaehlpunkte,
         scan_interval_minutes=scan_interval,
+        historical_days=historical_days,
         enable_raw_api_response_write=enable_raw_api_response_write,
         enable_daily_cons_statistics=enable_daily_cons,
         enable_daily_meter_read_statistics=enable_daily_meter_read,

@@ -1,6 +1,6 @@
 """Coordinator for shared WNSM polling and imports."""
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.const import UnitOfEnergy
@@ -25,12 +25,14 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         password: str,
         zaehlpunkte: list[str],
         scan_interval_minutes: int,
+        historical_days: int,
         enable_raw_api_response_write: bool,
         enable_daily_cons_statistics: bool,
         enable_daily_meter_read_statistics: bool,
         log_scope: str,
     ) -> None:
         self._zaehlpunkte = zaehlpunkte
+        self._historical_days = max(1, int(historical_days))
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
@@ -73,6 +75,13 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         attributes["raw_api_logging_prepare_error"] = logging_status["prepare_error"]
         attributes["raw_api_last_write_error"] = logging_status["last_write_error"]
 
+    def _historical_window(self) -> tuple[datetime, datetime]:
+        end = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        start = end - timedelta(days=self._historical_days)
+        return start, end
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
             await self._async_smartmeter.login()
@@ -91,10 +100,11 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                 attributes.update(zaehlpunkt_response)
 
                 if self._async_smartmeter.is_active(zaehlpunkt_response):
+                    start, end = self._historical_window()
                     meter_reading = await self._async_smartmeter.get_meter_reading_from_historic_data(
                         zaehlpunkt,
-                        None,
-                        None,
+                        start,
+                        end,
                     )
                     if meter_reading is not None:
                         native_value = meter_reading
@@ -105,6 +115,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         UnitOfEnergy.KILO_WATT_HOUR,
                         skip_login=True,
                         preloaded_zaehlpunkt=zaehlpunkt_response,
+                        historical_days=self._historical_days,
                         enable_daily_consumption_statistics=self._enable_daily_cons_statistics,
                         enable_daily_meter_read_statistics=self._enable_daily_meter_read_statistics,
                     )

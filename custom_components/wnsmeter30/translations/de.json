@@ -14,9 +14,13 @@
           "username": "Benutzername",
           "password": "Passwort",
           "scan_interval": "Abfrageintervall (Minuten)",
+          "historical_days": "Tage für historische API-Aufrufe",
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
           "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read)."
+        },
+        "data_description": {
+          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen."
         }
       },
       "select_meters": {
@@ -38,10 +42,14 @@
         "description": "Polling-Verhalten konfigurieren. Speichern lädt die Integration automatisch neu.",
         "data": {
           "scan_interval": "Abfrageintervall (Minuten)",
+          "historical_days": "Tage für historische API-Aufrufe",
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
           "enable_daily_meter_read": "Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffix _daily_meter_read).",
           "selected_zaehlpunkte": "Zähler"
+        },
+        "data_description": {
+          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen."
         }
       }
     }
