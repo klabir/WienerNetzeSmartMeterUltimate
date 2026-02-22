@@ -147,6 +147,37 @@ class _DummySmartmeterDaily400Split:
         }
 
 
+class _DummySmartmeterDaily400BeforeCutoff:
+    def __init__(self, cutoff: dt.date) -> None:
+        self.cutoff = cutoff
+        self.daily_calls: list[tuple[str, dt.datetime, dt.datetime]] = []
+
+    def historical_day_consumption(
+        self, zaehlpunkt: str, start: dt.datetime, end: dt.datetime
+    ) -> dict:
+        self.daily_calls.append((zaehlpunkt, start, end))
+        if end.date() < self.cutoff:
+            raise RuntimeError(
+                "API request failed for endpoint 'zaehlpunkte/123/AT000/messwerte' with status 400: {}"
+            )
+
+        start_date = max(start.date(), self.cutoff)
+        start_ts = dt.datetime.combine(start_date, dt.time.min, tzinfo=dt.timezone.utc)
+        next_day = start_ts + dt.timedelta(days=1)
+        return {
+            "obisCode": "1-1:1.9.0",
+            "einheit": "WH",
+            "messwerte": [
+                {
+                    "messwert": 1000,
+                    "zeitVon": start_ts.strftime("%Y-%m-%dT00:00:00Z"),
+                    "zeitBis": next_day.strftime("%Y-%m-%dT00:00:00Z"),
+                    "qualitaet": "VAL",
+                }
+            ],
+        }
+
+
 def test_build_chunk_ranges_splits_into_year_chunks():
     start = dt.datetime(2025, 1, 1, 12, 0, tzinfo=dt.timezone.utc)
     end = dt.datetime(2026, 1, 10, 6, 0, tzinfo=dt.timezone.utc)
@@ -239,3 +270,20 @@ async def test_get_historic_daily_consumption_splits_ranges_after_400():
     )
     assert result["unitOfMeasurement"] == "WH"
     assert len(result["values"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_get_historic_daily_consumption_keeps_valid_ranges_when_older_ranges_400():
+    dummy_smartmeter = _DummySmartmeterDaily400BeforeCutoff(cutoff=dt.date(2025, 7, 1))
+    async_smartmeter = AsyncSmartmeter(_DummyHass(), dummy_smartmeter)  # type: ignore[arg-type]
+    start = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    end = dt.datetime(2025, 12, 31, tzinfo=dt.timezone.utc)
+
+    result = await async_smartmeter.get_historic_daily_consumption(
+        "AT0010000000000000001000011111111", start, end
+    )
+
+    assert len(dummy_smartmeter.daily_calls) > 1
+    assert len(result["values"]) > 0
+    first_value = result["values"][0]
+    assert first_value["zeitpunktVon"] >= "2025-07-01T00:00:00Z"

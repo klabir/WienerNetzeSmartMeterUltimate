@@ -144,7 +144,14 @@ class AsyncSmartmeter:
                 raise
             day_span = (end_utc.date() - start_utc.date()).days + 1
             if day_span <= 1 or split_depth >= _MAX_400_SPLIT_DEPTH:
-                raise
+                _LOGGER.debug(
+                    "%s returned HTTP 400 for %s..%s (%d days). Treating range as empty.",
+                    debug_label,
+                    start_utc.date(),
+                    end_utc.date(),
+                    day_span,
+                )
+                return []
 
             split_days = day_span // 2
             left_end = start_utc + timedelta(days=split_days - 1)
