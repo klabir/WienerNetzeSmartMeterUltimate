@@ -26,6 +26,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Experimental toggle for Energy Flow rendering tests.
+# Set to True to restore previous behavior without code restructuring.
+DAILY_METER_READ_HAS_MEAN = False
+
 
 class Importer:
 
@@ -129,9 +133,8 @@ class Importer:
             return False
 
         capabilities = self._statistics_metadata_capabilities()
-        has_required_mean = (
-            row.get("mean") is not None if capabilities["has_mean"] else True
-        )
+        requires_mean = capabilities["has_mean"] and DAILY_METER_READ_HAS_MEAN
+        has_required_mean = row.get("mean") is not None if requires_mean else True
         has_required_sum = (
             row.get("sum") is not None if capabilities["has_sum"] else True
         )
@@ -359,7 +362,7 @@ class Importer:
         async_add_external_statistics(self.hass, daily_metadata, daily_statistics)
 
     async def _backfill_daily_meter_read_from_existing_rows(self) -> None:
-        """Upgrade daily meter-read stream so rows always carry state/mean/sum."""
+        """Upgrade daily meter-read stream so rows carry state/sum (+ optional mean)."""
         existing_daily_meter_read = await self._get_last_inserted_statistics(
             self.daily_meter_read_id, {"state", "mean", "sum"}
         )
@@ -404,14 +407,14 @@ class Importer:
                     delta = 0.0
                 running_sum += delta
             previous_reading = reading
-            daily_meter_read_statistics.append(
-                StatisticData(
-                    start=row_start,
-                    state=reading,
-                    mean=reading,
-                    sum=running_sum,
-                )
-            )
+            row_data: dict[str, Any] = {
+                "start": row_start,
+                "state": reading,
+                "sum": running_sum,
+            }
+            if DAILY_METER_READ_HAS_MEAN:
+                row_data["mean"] = reading
+            daily_meter_read_statistics.append(StatisticData(**row_data))
             daily_meter_read_abs_statistics.append(
                 StatisticData(
                     start=row_start,
@@ -649,7 +652,7 @@ class Importer:
         return self._build_statistics_metadata(
             statistic_id=self.daily_meter_read_id,
             name=f"{self.zaehlpunkt} daily meter read",
-            has_mean=True,
+            has_mean=DAILY_METER_READ_HAS_MEAN,
             has_sum=True,
         )
 
@@ -925,14 +928,14 @@ class Importer:
                     delta = 0.0
                 running_sum += delta
             previous_reading = reading
-            statistics.append(
-                StatisticData(
-                    start=ts,
-                    state=reading,
-                    mean=reading,
-                    sum=running_sum,
-                )
-            )
+            row_data: dict[str, Any] = {
+                "start": ts,
+                "state": reading,
+                "sum": running_sum,
+            }
+            if DAILY_METER_READ_HAS_MEAN:
+                row_data["mean"] = reading
+            statistics.append(StatisticData(**row_data))
             abs_statistics.append(
                 StatisticData(
                     start=ts,

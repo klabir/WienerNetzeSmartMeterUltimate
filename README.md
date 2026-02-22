@@ -15,8 +15,10 @@ Use the Home Assistant integration dialog to enter your Wiener Netze username an
 
 ![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/loginscreen.png)
 
-After login, Home Assistant opens meter selection. Keep the active meters selected and submit.
-Inactive meters can appear in the list, but are usually not preselected.
+After login, Home Assistant opens meter selection. Keep the preselected meters selected and submit.
+By default, active and smart-meter-ready meters are preselected.
+If no meter matches that status, all discovered meters are preselected.
+Inactive meters can appear in the list.
 
 ![Wiener Netze Smartmeter - Select meters](doc/SelectedMeters.png)
 
@@ -62,13 +64,13 @@ For each selected meter, these statistic IDs are used:
 ## Configuration Defaults
 
 Default values in the UI:
-- `Scan interval (minutes)`: `360` (6 hours)
+- `Scan interval (minutes)`: `360` (6 hours, allowed range `5-720`)
 - `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 - `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
 - `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).`: `True`
-- `Meters`: active/ready meters are pre-selected by default
+- `Meters`: active/smart-meter-ready meters are pre-selected by default; if none match, all discovered meters are pre-selected
 
-## Toggle Behavior TEST
+## Toggle Behavior
 
 ### `_daily_cons` toggle
 
@@ -228,6 +230,7 @@ Do not use `_daily_meter_read_abs` for Energy Dashboard calculations.
 
 After changing options in the integration:
 - Home Assistant reloads the integration automatically.
+- You can also change the selected meters in the same options dialog.
 - If needed, run a full Home Assistant restart to force immediate entity/statistics refresh.
 
 ## Credits

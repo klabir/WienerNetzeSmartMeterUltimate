@@ -15,8 +15,10 @@ Verwende den Home Assistant Integrationsdialog, um deinen Wiener Netze Benutzern
 
 ![Wiener Netze Smartmeter Authentifizierung - Login-Bildschirm der Ersteinrichtung](doc/loginscreen.png)
 
-Nach dem Login oeffnet Home Assistant die Zaehlerauswahl. Lass die aktiven Zaehler ausgewaehlt und bestaetige.
-Inaktive Zaehler koennen in der Liste erscheinen, sind aber in der Regel nicht vorausgewaehlt.
+Nach dem Login oeffnet Home Assistant die Zaehlerauswahl. Lass die vorausgewaehlten Zaehler ausgewaehlt und bestaetige.
+Standardmaessig sind aktive und smart-meter-bereite Zaehler vorausgewaehlt.
+Wenn kein Zaehler diesen Status hat, werden alle gefundenen Zaehler vorausgewaehlt.
+Inaktive Zaehler koennen in der Liste erscheinen.
 
 ![Wiener Netze Smartmeter - Zaehler auswaehlen](doc/SelectedMeters.png)
 
@@ -55,20 +57,20 @@ Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 | --- | --- | --- |
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Aktiviert | Immer aktiv |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Energy-Dashboard-Stream (`sum` ist monoton). |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs` | Aktiviert | Schalter: `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).` Absoluter Zaehlerstand-Stream (`state`/`mean`, ohne `sum`). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffixe _daily_meter_read und _daily_meter_read_abs).` Energy-Dashboard-Stream (`sum` ist monoton). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read_abs` | Aktiviert | Schalter: `Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffixe _daily_meter_read und _daily_meter_read_abs).` Absoluter Zaehlerstand-Stream (`state`/`mean`, ohne `sum`). |
 
 ## Konfigurationsstandardwerte
 
 Standardwerte in der UI:
-- `Scan interval (minutes)`: `360` (6 Stunden)
-- `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
-- `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
-- `Enable daily total consumption historical values, statistics (Suffixes _daily_meter_read and _daily_meter_read_abs).`: `True`
-- `Meters`: aktive/bereite Zaehler sind standardmaessig vorausgewaehlt
+- `Abfrageintervall (Minuten)`: `360` (6 Stunden, erlaubter Bereich `5-720`)
+- `Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben`: `False`
+- `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).`: `True`
+- `Tägliche Gesamtverbrauchs-Historie und Statistiken aktivieren (Suffixe _daily_meter_read und _daily_meter_read_abs).`: `True`
+- `Zähler`: aktive/smart-meter-bereite Zaehler sind standardmaessig vorausgewaehlt; falls keiner passt, werden alle gefundenen Zaehler vorausgewaehlt
 
-## Schalterverhalten TEST
+## Schalterverhalten
 
 ### `_daily_cons` Schalter
 
@@ -228,6 +230,7 @@ Verwende `_daily_meter_read_abs` nicht fuer Berechnungen im Energy Dashboard.
 
 Nach dem Aendern von Optionen in der Integration:
 - Home Assistant laedt die Integration automatisch neu.
+- Du kannst dort auch die ausgewaehlten Zaehler aendern.
 - Falls noetig, fuehre einen kompletten Home Assistant Neustart aus, um sofortiges Aktualisieren von Entitaeten/Statistiken zu erzwingen.
 
 ## Credits
