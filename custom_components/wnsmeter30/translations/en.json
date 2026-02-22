@@ -52,11 +52,11 @@
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
           "enable_daily_meter_read": "Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).",
           "use_alias_for_ids": "Use alias also for statistic and entity IDs",
-          "alias_display_names_header": "Set alias for display names:",
           "selected_zaehlpunkte": "Meters"
         },
         "data_description": {
-          "historical_days": "Default: {historical_days_default} days. Limit: {historical_days_limit} days. Data is fetched in 1-year chunks ({historical_days_chunk} days)."
+          "historical_days": "Default: {historical_days_default} days. Limit: {historical_days_limit} days. Data is fetched in 1-year chunks ({historical_days_chunk} days).",
+          "selected_zaehlpunkte": "Set alias for display names:"
         }
       }
     }
