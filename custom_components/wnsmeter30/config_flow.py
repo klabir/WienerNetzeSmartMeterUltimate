@@ -176,6 +176,46 @@ def user_schema(default_scan_interval: int, default_historical_days: int):
     )
 
 
+def _options_schema(
+    *,
+    scan_interval: int,
+    enable_raw_api_response_write: bool,
+    historical_days: int,
+    enable_daily_cons: bool,
+    enable_daily_meter_read: bool,
+    selected_meters: list[str],
+    meter_options: list[dict[str, str]],
+) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=scan_interval,
+            ): _scan_interval_field(scan_interval),
+            vol.Optional(
+                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
+                default=enable_raw_api_response_write,
+            ): cv.boolean,
+            vol.Optional(
+                CONF_HISTORICAL_DAYS,
+                default=historical_days,
+            ): _historical_days_field(historical_days),
+            vol.Optional(
+                CONF_ENABLE_DAILY_CONS,
+                default=enable_daily_cons,
+            ): cv.boolean,
+            vol.Optional(
+                CONF_ENABLE_DAILY_METER_READ,
+                default=enable_daily_meter_read,
+            ): cv.boolean,
+            vol.Required(
+                CONF_SELECTED_ZAEHLPUNKTE,
+                default=selected_meters,
+            ): _meter_select_field(meter_options),
+        }
+    )
+
+
 class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Wiener Netze Smartmeter config flow."""
 
@@ -328,90 +368,6 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 ),
             )
         )
-
-        if user_input is not None:
-            selected_meters = _normalize_selected_meters(
-                user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
-            )
-            selected_meters = [
-                value for value in selected_meters if value in option_values
-            ]
-            if not selected_meters:
-                return self.async_show_form(
-                    step_id="init",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Optional(
-                                CONF_SCAN_INTERVAL,
-                                default=config_entry.options.get(
-                                    CONF_SCAN_INTERVAL,
-                                    config_entry.data.get(
-                                        CONF_SCAN_INTERVAL,
-                                        DEFAULT_SCAN_INTERVAL_MINUTES,
-                                    ),
-                                ),
-                            ): _scan_interval_field(
-                                config_entry.options.get(
-                                    CONF_SCAN_INTERVAL,
-                                    config_entry.data.get(
-                                        CONF_SCAN_INTERVAL,
-                                        DEFAULT_SCAN_INTERVAL_MINUTES,
-                                    ),
-                                )
-                            ),
-                            vol.Optional(
-                                CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                                default=config_entry.options.get(
-                                    CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                                    config_entry.data.get(
-                                        CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                                        False,
-                                    ),
-                                ),
-                            ): cv.boolean,
-                            vol.Optional(
-                                CONF_HISTORICAL_DAYS,
-                                default=current_historical_days,
-                            ): _historical_days_field(current_historical_days),
-                            vol.Optional(
-                                CONF_ENABLE_DAILY_CONS,
-                                default=config_entry.options.get(
-                                    CONF_ENABLE_DAILY_CONS,
-                                    config_entry.data.get(
-                                        CONF_ENABLE_DAILY_CONS,
-                                        DEFAULT_ENABLE_DAILY_CONS,
-                                    ),
-                                ),
-                            ): cv.boolean,
-                            vol.Optional(
-                                CONF_ENABLE_DAILY_METER_READ,
-                                default=config_entry.options.get(
-                                    CONF_ENABLE_DAILY_METER_READ,
-                                    config_entry.data.get(
-                                        CONF_ENABLE_DAILY_METER_READ,
-                                        DEFAULT_ENABLE_DAILY_METER_READ,
-                                    ),
-                                ),
-                            ): cv.boolean,
-                            vol.Required(
-                                CONF_SELECTED_ZAEHLPUNKTE,
-                                default=current_selected_meters,
-                            ): _meter_select_field(meter_options),
-                        }
-                    ),
-                    description_placeholders=_historical_days_description_placeholders(),
-                    errors={"base": "no_meter_selected"},
-                )
-            user_input = dict(user_input)
-            user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
-            user_input[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
-                user_input.get(CONF_HISTORICAL_DAYS, current_historical_days)
-            )
-            self.hass.async_create_task(
-                self.hass.config_entries.async_reload(config_entry.entry_id)
-            )
-            return self.async_create_entry(title="", data=user_input)
-
         current_scan_interval = config_entry.options.get(
             CONF_SCAN_INTERVAL,
             config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES),
@@ -431,35 +387,48 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
+        if user_input is not None:
+            selected_meters = _normalize_selected_meters(
+                user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
+            )
+            selected_meters = [
+                value for value in selected_meters if value in option_values
+            ]
+            if not selected_meters:
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=_options_schema(
+                        scan_interval=current_scan_interval,
+                        enable_raw_api_response_write=current_enable_raw_api_response_write,
+                        historical_days=current_historical_days,
+                        enable_daily_cons=current_enable_daily_cons,
+                        enable_daily_meter_read=current_enable_daily_meter_read,
+                        selected_meters=current_selected_meters,
+                        meter_options=meter_options,
+                    ),
+                    description_placeholders=_historical_days_description_placeholders(),
+                    errors={"base": "no_meter_selected"},
+                )
+            user_input = dict(user_input)
+            user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
+            user_input[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
+                user_input.get(CONF_HISTORICAL_DAYS, current_historical_days)
+            )
+            self.hass.async_create_task(
+                self.hass.config_entries.async_reload(config_entry.entry_id)
+            )
+            return self.async_create_entry(title="", data=user_input)
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=current_scan_interval,
-                    ): _scan_interval_field(current_scan_interval),
-                    vol.Optional(
-                        CONF_ENABLE_RAW_API_RESPONSE_WRITE,
-                        default=current_enable_raw_api_response_write,
-                    ): cv.boolean,
-                    vol.Optional(
-                        CONF_HISTORICAL_DAYS,
-                        default=current_historical_days,
-                    ): _historical_days_field(current_historical_days),
-                    vol.Optional(
-                        CONF_ENABLE_DAILY_CONS,
-                        default=current_enable_daily_cons,
-                    ): cv.boolean,
-                    vol.Optional(
-                        CONF_ENABLE_DAILY_METER_READ,
-                        default=current_enable_daily_meter_read,
-                    ): cv.boolean,
-                    vol.Required(
-                        CONF_SELECTED_ZAEHLPUNKTE,
-                        default=current_selected_meters,
-                    ): _meter_select_field(meter_options),
-                }
+            data_schema=_options_schema(
+                scan_interval=current_scan_interval,
+                enable_raw_api_response_write=current_enable_raw_api_response_write,
+                historical_days=current_historical_days,
+                enable_daily_cons=current_enable_daily_cons,
+                enable_daily_meter_read=current_enable_daily_meter_read,
+                selected_meters=current_selected_meters,
+                meter_options=meter_options,
             ),
             description_placeholders=_historical_days_description_placeholders(),
         )

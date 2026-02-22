@@ -253,6 +253,44 @@ def test_zaehlpunkte(requests_mock: Mocker):
 
 
 @pytest.mark.usefixtures("requests_mock")
+def test_get_zaehlpunkt_uses_cached_contracts(requests_mock: Mocker):
+    z = zaehlpunkt_response([enabled(zaehlpunkt())])[0]
+    zp = z["zaehlpunkte"][0]["zaehlpunktnummer"]
+    expect_login(requests_mock)
+    expect_zaehlpunkte(requests_mock, [enabled(zaehlpunkt())])
+
+    sm = smartmeter().login()
+    resolved_default = sm.get_zaehlpunkt()
+    resolved_by_id = sm.get_zaehlpunkt(zp)
+
+    zaehlpunkte_requests = [
+        request
+        for request in requests_mock.request_history
+        if request.method == "GET" and request.url.endswith("/zaehlpunkte")
+    ]
+    assert len(zaehlpunkte_requests) == 1
+    assert resolved_default == resolved_by_id
+
+
+@pytest.mark.usefixtures("requests_mock")
+def test_zaehlpunkte_refresh_bypasses_cache(requests_mock: Mocker):
+    expect_login(requests_mock)
+    expect_zaehlpunkte(requests_mock, [enabled(zaehlpunkt())])
+
+    sm = smartmeter().login()
+    sm.zaehlpunkte()
+    sm.zaehlpunkte()
+    sm.zaehlpunkte(refresh=True)
+
+    zaehlpunkte_requests = [
+        request
+        for request in requests_mock.request_history
+        if request.method == "GET" and request.url.endswith("/zaehlpunkte")
+    ]
+    assert len(zaehlpunkte_requests) == 2
+
+
+@pytest.mark.usefixtures("requests_mock")
 def test_history(requests_mock: Mocker):
     z = zaehlpunkt_response([enabled(zaehlpunkt())])[0]
     zp = z["zaehlpunkte"][0]['zaehlpunktnummer']

@@ -535,9 +535,13 @@ async def test_safe_import_daily_consumption_statistics_ignores_errors(monkeypat
         }
     )
 
+    async def _allow_daily_import(*_args, **_kwargs) -> bool:
+        return True
+
     async def _raise_daily_import():
         raise RuntimeError("daily endpoint unavailable")
 
+    monkeypatch.setattr(importer, "_should_run_daily_import", _allow_daily_import)
     monkeypatch.setattr(
         importer,
         "_import_daily_consumption_statistics",
@@ -547,6 +551,105 @@ async def test_safe_import_daily_consumption_statistics_ignores_errors(monkeypat
     await importer._safe_import_daily_consumption_statistics()
 
     assert "Skipping daily consumption statistics import" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_safe_import_daily_consumption_statistics_skips_when_guard_blocks(
+    monkeypatch,
+):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+    calls = {"import_calls": 0}
+
+    async def _block_daily_import(*_args, **_kwargs) -> bool:
+        return False
+
+    async def _capture_daily_import():
+        calls["import_calls"] += 1
+        return 1.0
+
+    monkeypatch.setattr(importer, "_should_run_daily_import", _block_daily_import)
+    monkeypatch.setattr(
+        importer,
+        "_import_daily_consumption_statistics",
+        _capture_daily_import,
+    )
+
+    result = await importer._safe_import_daily_consumption_statistics()
+
+    assert result is None
+    assert calls["import_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_safe_import_daily_meter_read_statistics_skips_when_guard_blocks(
+    monkeypatch,
+):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+    calls = {"import_calls": 0}
+
+    async def _block_daily_import(*_args, **_kwargs) -> bool:
+        return False
+
+    async def _capture_daily_import():
+        calls["import_calls"] += 1
+
+    monkeypatch.setattr(importer, "_should_run_daily_import", _block_daily_import)
+    monkeypatch.setattr(
+        importer,
+        "_import_daily_meter_read_statistics",
+        _capture_daily_import,
+    )
+
+    await importer._safe_import_daily_meter_read_statistics()
+
+    assert calls["import_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_should_run_daily_import_uses_cooldown_until_next_retry(monkeypatch):
+    importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
+    calls = {"db_calls": 0}
+    day_boundary = dt.datetime.now(dt.timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    async def _fake_get_last_inserted_statistics(
+        _statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        calls["db_calls"] += 1
+        assert number_of_stats == 1
+        return {
+            importer.daily_meter_read_id: [
+                {
+                    "state": 4444.0,
+                    "mean": 4444.0,
+                    "sum": 4444.0,
+                    "end": day_boundary.isoformat(),
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        importer,
+        "_get_last_inserted_statistics",
+        _fake_get_last_inserted_statistics,
+    )
+
+    should_run_first = await importer._should_run_daily_import(
+        importer.daily_meter_read_id,
+        lambda _: True,
+    )
+    should_run_second = await importer._should_run_daily_import(
+        importer.daily_meter_read_id,
+        lambda _: True,
+    )
+
+    assert should_run_first is False
+    assert should_run_second is False
+    assert calls["db_calls"] == 1
+    assert importer._daily_import_cooldown_until[importer.daily_meter_read_id] > dt.datetime.now(
+        dt.timezone.utc
+    )
 
 
 @pytest.mark.asyncio

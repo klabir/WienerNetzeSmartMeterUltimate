@@ -81,6 +81,8 @@ class Smartmeter:
         self._raw_api_last_write_error = None
         self._recent_api_calls = []
         self._max_recent_api_calls = 20
+        self._zaehlpunkte_cache: list[dict] | None = None
+        self._zaehlpunkt_cache: dict[str, tuple[str, str, const.AnlagenType]] = {}
         if self._enable_raw_api_response_write:
             self._prepare_raw_api_response_dir()
 
@@ -99,6 +101,8 @@ class Smartmeter:
         self._raw_api_log_prepare_error = None
         self._raw_api_last_write_error = None
         self._recent_api_calls = []
+        self._zaehlpunkte_cache = None
+        self._zaehlpunkt_cache = {}
 
     def is_login_expired(self):
         return self._access_token_expiration is not None and datetime.now() >= self._access_token_expiration
@@ -297,6 +301,8 @@ class Smartmeter:
             except SmartmeterError:
                 self.reset()
         if not self.is_logged_in():
+            self._zaehlpunkte_cache = None
+            self._zaehlpunkt_cache = {}
             url = self.load_login_page()
             code = self.credentials_login(url)
             tokens = self.load_tokens(code)
@@ -694,25 +700,58 @@ class Smartmeter:
             f"Could not parse JSON response for endpoint '{endpoint}'"
         )
 
-    def get_zaehlpunkt(self, zaehlpunkt: str = None) -> tuple[str, str, str]:
+    def get_zaehlpunkt(
+        self, zaehlpunkt: str = None
+    ) -> tuple[str, str, const.AnlagenType]:
+        target_zaehlpunkt = str(zaehlpunkt) if zaehlpunkt is not None else None
+        cache_key = target_zaehlpunkt if target_zaehlpunkt is not None else "__default__"
+        cached = self._zaehlpunkt_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         contracts = self.zaehlpunkte()
-        if zaehlpunkt is None:
-            customer_id = contracts[0]["geschaeftspartner"]
-            zp = contracts[0]["zaehlpunkte"][0]["zaehlpunktnummer"]
-            anlagetype = contracts[0]["zaehlpunkte"][0]["anlage"]["typ"]
+        if len(contracts) == 0:
+            raise SmartmeterQueryError("No zaehlpunkte returned by API.")
+
+        if target_zaehlpunkt is None:
+            first_contract = contracts[0]
+            first_points = first_contract.get("zaehlpunkte") or []
+            if len(first_points) == 0:
+                raise SmartmeterQueryError("No zaehlpunkte returned by API.")
+            customer_id = first_contract["geschaeftspartner"]
+            zp = first_points[0]["zaehlpunktnummer"]
+            anlagetype = first_points[0]["anlage"]["typ"]
         else:
             customer_id = zp = anlagetype = None
             for contract in contracts:
-                zp_details = [z for z in contract["zaehlpunkte"] if z["zaehlpunktnummer"] == zaehlpunkt]
-                if len(zp_details) > 0:
-                    anlagetype = zp_details[0]["anlage"]["typ"]
-                    zp = zp_details[0]["zaehlpunktnummer"]
+                for zp_item in contract.get("zaehlpunkte", []):
+                    if str(zp_item.get("zaehlpunktnummer")) != target_zaehlpunkt:
+                        continue
+                    anlagetype = zp_item["anlage"]["typ"]
+                    zp = zp_item["zaehlpunktnummer"]
                     customer_id = contract["geschaeftspartner"]
-        return customer_id, zp, const.AnlagenType.from_str(anlagetype)
+                    break
+                if zp is not None:
+                    break
+            if zp is None or customer_id is None or anlagetype is None:
+                raise SmartmeterQueryError(
+                    f"Zaehlpunkt '{target_zaehlpunkt}' not found in contracts."
+                )
 
-    def zaehlpunkte(self):
+        resolved = (customer_id, zp, const.AnlagenType.from_str(anlagetype))
+        self._zaehlpunkt_cache[cache_key] = resolved
+        if target_zaehlpunkt is None:
+            self._zaehlpunkt_cache[str(zp)] = resolved
+        return resolved
+
+    def zaehlpunkte(self, refresh: bool = False):
         """Returns zaehlpunkte for currently logged in user."""
-        return self._call_api("zaehlpunkte")
+        if not refresh and self._zaehlpunkte_cache is not None:
+            return self._zaehlpunkte_cache
+        contracts = self._call_api("zaehlpunkte")
+        self._zaehlpunkte_cache = contracts
+        self._zaehlpunkt_cache = {}
+        return contracts
 
     def consumptions(self):
         """Returns response from 'consumptions' endpoint."""

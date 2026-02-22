@@ -102,6 +102,42 @@ class AsyncSmartmeter:
             deduplicated[key] = value
         return cls._sort_values(list(deduplicated.values()))
 
+    async def _fetch_chunked(
+        self,
+        zaehlpunkt: str,
+        start: datetime | None,
+        end: datetime | None,
+        request_fn,
+        *,
+        error_message: str,
+        debug_label: str,
+        translate_map: list[tuple[str, str]] | None = None,
+        extra_args: tuple | None = None,
+    ) -> list[dict[str, any]]:
+        ranges = self._build_chunk_ranges(start, end)
+        if len(ranges) == 0:
+            return []
+
+        chunks: list[dict[str, any]] = []
+        args_tail = extra_args or ()
+        for range_start, range_end in ranges:
+            response = await self.hass.async_add_executor_job(
+                request_fn,
+                zaehlpunkt,
+                range_start,
+                range_end,
+                *args_tail,
+            )
+            if "Exception" in response:
+                raise RuntimeError(f"{error_message}: {response}")
+            _LOGGER.debug("%s: %s", debug_label, response)
+            chunks.append(
+                translate_dict(response, translate_map)
+                if translate_map is not None
+                else response
+            )
+        return chunks
+
     async def login(self) -> Future:
         async with self.login_lock:
             return await self.hass.async_add_executor_job(self.smartmeter.login)
@@ -200,22 +236,16 @@ class AsyncSmartmeter:
         date_to: datetime = None,
     ) -> dict[str, any]:
         """Return daily consumption history from historical data (`wertetyp=DAY`)."""
-        ranges = self._build_chunk_ranges(date_from, date_to)
-        responses: list[dict[str, any]] = []
-        if len(ranges) == 0:
+        responses = await self._fetch_chunked(
+            zaehlpunkt,
+            date_from,
+            date_to,
+            self.smartmeter.historical_day_consumption,
+            error_message="Cannot access daily historic data",
+            debug_label="Raw daily historic data",
+        )
+        if len(responses) == 0:
             return {"obisCode": None, "unitOfMeasurement": None, "values": []}
-
-        for range_start, range_end in ranges:
-            response = await self.hass.async_add_executor_job(
-                self.smartmeter.historical_day_consumption,
-                zaehlpunkt,
-                range_start,
-                range_end,
-            )
-            if "Exception" in response:
-                raise RuntimeError(f"Cannot access daily historic data: {response}")
-            _LOGGER.debug(f"Raw daily historic data: {response}")
-            responses.append(response)
 
         values: list[dict[str, any]] = []
         for response in responses:
@@ -287,22 +317,17 @@ class AsyncSmartmeter:
         end_date: datetime = None,
     ) -> dict[str, any]:
         """Return historical meter reading values (`wertetyp=METER_READ`)."""
-        ranges = self._build_chunk_ranges(start_date, end_date)
-        translated_chunks: list[dict[str, any]] = []
-        if len(ranges) == 0:
+        translated_chunks = await self._fetch_chunked(
+            zaehlpunkt,
+            start_date,
+            end_date,
+            self.smartmeter.historical_meter_reading,
+            error_message="Cannot access historic data",
+            debug_label="Raw historical data",
+            translate_map=ATTRS_HISTORIC_DATA,
+        )
+        if len(translated_chunks) == 0:
             return {"obisCode": None, "unitOfMeasurement": None, "values": []}
-
-        for range_start, range_end in ranges:
-            response = await self.hass.async_add_executor_job(
-                self.smartmeter.historical_meter_reading,
-                zaehlpunkt,
-                range_start,
-                range_end,
-            )
-            if "Exception" in response:
-                raise RuntimeError(f"Cannot access historic data: {response}")
-            _LOGGER.debug(f"Raw historical data: {response}")
-            translated_chunks.append(translate_dict(response, ATTRS_HISTORIC_DATA))
 
         values: list[dict[str, any]] = []
         obis_code = None
@@ -332,23 +357,18 @@ class AsyncSmartmeter:
 
     async def get_bewegungsdaten(self, zaehlpunkt: str, start: datetime = None, end: datetime = None, granularity: ValueType = ValueType.QUARTER_HOUR):
         """Return three years of historic quarter-hourly data"""
-        ranges = self._build_chunk_ranges(start, end)
-        translated_chunks: list[dict[str, any]] = []
-        if len(ranges) == 0:
+        translated_chunks = await self._fetch_chunked(
+            zaehlpunkt,
+            start,
+            end,
+            self.smartmeter.bewegungsdaten,
+            error_message="Cannot access bewegungsdaten",
+            debug_label="Raw bewegungsdaten",
+            translate_map=ATTRS_BEWEGUNGSDATEN,
+            extra_args=(granularity,),
+        )
+        if len(translated_chunks) == 0:
             return {"values": []}
-
-        for range_start, range_end in ranges:
-            response = await self.hass.async_add_executor_job(
-                self.smartmeter.bewegungsdaten,
-                zaehlpunkt,
-                range_start,
-                range_end,
-                granularity
-            )
-            if "Exception" in response:
-                raise RuntimeError(f"Cannot access bewegungsdaten: {response}")
-            _LOGGER.debug(f"Raw bewegungsdaten: {response}")
-            translated_chunks.append(translate_dict(response, ATTRS_BEWEGUNGSDATEN))
 
         values: list[dict[str, any]] = []
         merged: dict[str, any] = {}

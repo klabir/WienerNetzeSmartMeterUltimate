@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Shared update coordinator for all WNSM sensors in one entry."""
+    _LIVE_READING_LOOKBACK_DAYS = 30
 
     def __init__(
         self,
@@ -32,7 +33,11 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         log_scope: str,
     ) -> None:
         self._zaehlpunkte = zaehlpunkte
-        self._historical_days = max(1, int(historical_days))
+        try:
+            historical_days_int = int(historical_days)
+        except (TypeError, ValueError):
+            historical_days_int = 1
+        self._historical_days = max(1, historical_days_int)
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
@@ -82,6 +87,14 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         start = end - timedelta(days=self._historical_days)
         return start, end
 
+    def _live_meter_reading_windows(self) -> tuple[tuple[datetime, datetime], tuple[datetime, datetime] | None]:
+        full_start, end = self._historical_window()
+        short_days = max(1, min(self._LIVE_READING_LOOKBACK_DAYS, self._historical_days))
+        short_start = end - timedelta(days=short_days)
+        if short_start <= full_start:
+            return (full_start, end), None
+        return (short_start, end), (full_start, end)
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
             await self._async_smartmeter.login()
@@ -100,12 +113,23 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                 attributes.update(zaehlpunkt_response)
 
                 if self._async_smartmeter.is_active(zaehlpunkt_response):
-                    start, end = self._historical_window()
+                    short_window, fallback_window = self._live_meter_reading_windows()
                     meter_reading = await self._async_smartmeter.get_meter_reading_from_historic_data(
                         zaehlpunkt,
-                        start,
-                        end,
+                        short_window[0],
+                        short_window[1],
                     )
+                    if meter_reading is None and fallback_window is not None:
+                        _LOGGER.debug(
+                            "No live meter reading found in %s-day window for %s. Retrying full historical window.",
+                            (short_window[1] - short_window[0]).days,
+                            zaehlpunkt,
+                        )
+                        meter_reading = await self._async_smartmeter.get_meter_reading_from_historic_data(
+                            zaehlpunkt,
+                            fallback_window[0],
+                            fallback_window[1],
+                        )
                     if meter_reading is not None:
                         native_value = meter_reading
                     importer = Importer(

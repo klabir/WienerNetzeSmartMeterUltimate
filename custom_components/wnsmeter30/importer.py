@@ -4,7 +4,7 @@ from datetime import timedelta, timezone, datetime
 from decimal import Decimal
 from functools import lru_cache
 from operator import itemgetter
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import (
@@ -25,6 +25,7 @@ from .api.constants import ValueType
 from .const import DEFAULT_HISTORICAL_DAYS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+_DAILY_IMPORT_RETRY_INTERVAL = timedelta(hours=1)
 
 
 class Importer:
@@ -61,6 +62,8 @@ class Importer:
         self.enable_daily_consumption_statistics = enable_daily_consumption_statistics
         self.enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
         self._latest_daily_consumption_day_value: float | None = None
+        self._daily_import_retry_interval = _DAILY_IMPORT_RETRY_INTERVAL
+        self._daily_import_cooldown_until: dict[str, datetime] = {}
 
     def is_last_inserted_stat_valid(self, last_inserted_stat):
         return (
@@ -209,6 +212,44 @@ class Importer:
         return datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         ) - timedelta(days=self.historical_days)
+
+    @staticmethod
+    def _day_boundary_utc(now: datetime | None = None) -> datetime:
+        current = now or datetime.now(timezone.utc)
+        return current.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    async def _should_run_daily_import(
+        self,
+        statistic_id: str,
+        validator: Callable[[dict[str, list[dict[str, Any]]]], bool],
+    ) -> bool:
+        now = datetime.now(timezone.utc)
+        cooldown_until = self._daily_import_cooldown_until.get(statistic_id)
+        if cooldown_until is not None and now < cooldown_until:
+            return False
+
+        last_inserted_stat = await self._get_last_inserted_statistics(
+            statistic_id,
+            {"state", "mean", "sum"},
+        )
+        if not validator(last_inserted_stat):
+            self._daily_import_cooldown_until.pop(statistic_id, None)
+            return True
+
+        row = last_inserted_stat[statistic_id][0]
+        start = self._to_datetime(row.get("end"))
+        if start is None:
+            self._daily_import_cooldown_until.pop(statistic_id, None)
+            return True
+
+        if start < self._day_boundary_utc(now):
+            self._daily_import_cooldown_until.pop(statistic_id, None)
+            return True
+
+        self._daily_import_cooldown_until[statistic_id] = (
+            now + self._daily_import_retry_interval
+        )
+        return False
 
     async def _get_last_inserted_statistics(
         self,
@@ -651,6 +692,11 @@ class Importer:
         return await self._import_statistics(start=start, total_usage=total_usage)
 
     async def _safe_import_daily_consumption_statistics(self) -> float | None:
+        if not await self._should_run_daily_import(
+            self.daily_consumption_id,
+            self.is_last_inserted_daily_consumption_stat_valid,
+        ):
+            return None
         try:
             value = await self._import_daily_consumption_statistics()
             if value is None:
@@ -665,6 +711,11 @@ class Importer:
             return None
 
     async def _safe_import_daily_meter_read_statistics(self) -> None:
+        if not await self._should_run_daily_import(
+            self.daily_meter_read_id,
+            self.is_last_inserted_daily_meter_read_stat_valid,
+        ):
+            return
         try:
             await self._import_daily_meter_read_statistics()
         except Exception as err:  # pylint: disable=broad-except
