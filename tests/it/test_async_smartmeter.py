@@ -117,6 +117,36 @@ class _DummySmartmeterBewegungsdaten:
         }
 
 
+class _DummySmartmeterDaily400Split:
+    def __init__(self, max_days: int = 90) -> None:
+        self.max_days = max_days
+        self.daily_calls: list[tuple[str, dt.datetime, dt.datetime]] = []
+
+    def historical_day_consumption(
+        self, zaehlpunkt: str, start: dt.datetime, end: dt.datetime
+    ) -> dict:
+        self.daily_calls.append((zaehlpunkt, start, end))
+        day_span = (end.date() - start.date()).days + 1
+        if day_span > self.max_days:
+            raise RuntimeError(
+                "API request failed for endpoint 'zaehlpunkte/123/AT000/messwerte' with status 400: {}"
+            )
+
+        next_day = start + dt.timedelta(days=1)
+        return {
+            "obisCode": "1-1:1.9.0",
+            "einheit": "WH",
+            "messwerte": [
+                {
+                    "messwert": 1000,
+                    "zeitVon": start.strftime("%Y-%m-%dT00:00:00Z"),
+                    "zeitBis": next_day.strftime("%Y-%m-%dT00:00:00Z"),
+                    "qualitaet": "VAL",
+                }
+            ],
+        }
+
+
 def test_build_chunk_ranges_splits_into_year_chunks():
     start = dt.datetime(2025, 1, 1, 12, 0, tzinfo=dt.timezone.utc)
     end = dt.datetime(2026, 1, 10, 6, 0, tzinfo=dt.timezone.utc)
@@ -189,3 +219,23 @@ async def test_get_bewegungsdaten_merges_unit_from_later_chunk():
         value for value in result["values"] if value["zeitpunktVon"] == "2025-12-31T23:45:00Z"
     )
     assert overlap_value["wert"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_get_historic_daily_consumption_splits_ranges_after_400():
+    dummy_smartmeter = _DummySmartmeterDaily400Split(max_days=90)
+    async_smartmeter = AsyncSmartmeter(_DummyHass(), dummy_smartmeter)  # type: ignore[arg-type]
+    start = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    end = dt.datetime(2025, 12, 31, tzinfo=dt.timezone.utc)
+
+    result = await async_smartmeter.get_historic_daily_consumption(
+        "AT0010000000000000001000011111111", start, end
+    )
+
+    assert len(dummy_smartmeter.daily_calls) > 1
+    assert any(
+        ((range_end.date() - range_start.date()).days + 1) > dummy_smartmeter.max_days
+        for _zaehlpunkt, range_start, range_end in dummy_smartmeter.daily_calls
+    )
+    assert result["unitOfMeasurement"] == "WH"
+    assert len(result["values"]) > 0

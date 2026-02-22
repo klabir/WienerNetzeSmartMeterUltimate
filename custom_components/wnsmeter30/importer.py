@@ -552,7 +552,14 @@ class Importer:
             if not self.is_last_inserted_stat_valid(last_inserted_stat):
                 # No previous data - start from scratch
                 _LOGGER.warning("Starting import of historical data. This might take some time.")
-                _sum = await self._initial_import_statistics()
+                try:
+                    _sum = await self._initial_import_statistics()
+                except (ValueError, NotImplementedError) as err:
+                    _LOGGER.warning(
+                        "Skipping bewegungsdaten import for %s due to invalid payload: %s",
+                        self.zaehlpunkt,
+                        err,
+                    )
             else:
                 start_off_point = self.prepare_start_off_point(last_inserted_stat)
                 if start_off_point is None:
@@ -583,7 +590,14 @@ class Importer:
                         "daily_consumption_day_value": daily_consumption_day_value,
                     }
                 start, _sum = start_off_point
-                _sum = await self._incremental_import_statistics(start, _sum)
+                try:
+                    _sum = await self._incremental_import_statistics(start, _sum)
+                except (ValueError, NotImplementedError) as err:
+                    _LOGGER.warning(
+                        "Skipping bewegungsdaten import for %s due to invalid payload: %s",
+                        self.zaehlpunkt,
+                        err,
+                    )
 
             await self._backfill_cumulative_from_existing_sum()
             if self.enable_daily_consumption_statistics:

@@ -454,6 +454,108 @@ async def test_import_daily_meter_read_statistics_keeps_sum_continuous_across_ru
     assert _stat_value(energy_statistics[1], "sum") == pytest.approx(25.5)
 
 
+@pytest.mark.asyncio
+async def test_async_import_continues_daily_streams_when_bewegungsdaten_missing_unit(
+    monkeypatch,
+):
+    calls: list[tuple[tuple, dict]] = []
+
+    def _capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(importer_module, "async_add_external_statistics", _capture)
+
+    importer = _build_importer(
+        {
+            "unitOfMeasurement": None,
+            "values": [
+                {
+                    "wert": 1.234,
+                    "zeitpunktVon": "2025-01-01T00:00:00Z",
+                    "zeitpunktBis": "2025-01-01T00:15:00Z",
+                    "geschaetzt": False,
+                }
+            ],
+        },
+        {
+            "unitOfMeasurement": "WH",
+            "values": [
+                {
+                    "wert": 1000,
+                    "zeitpunktVon": "2025-01-01T23:00:00Z",
+                    "zeitpunktBis": "2025-01-02T23:00:00Z",
+                    "geschaetzt": False,
+                },
+                {
+                    "wert": 2500,
+                    "zeitpunktVon": "2025-01-02T23:00:00Z",
+                    "zeitpunktBis": "2025-01-03T23:00:00Z",
+                    "geschaetzt": False,
+                },
+            ],
+        },
+        {
+            "unitOfMeasurement": "WH",
+            "values": [
+                {
+                    "messwert": 4444000,
+                    "zeitVon": "2025-01-01T23:00:00Z",
+                    "zeitBis": "2025-01-02T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+                {
+                    "messwert": 4446500,
+                    "zeitVon": "2025-01-02T23:00:00Z",
+                    "zeitBis": "2025-01-03T23:00:00Z",
+                    "qualitaet": "VAL",
+                },
+            ],
+        },
+    )
+    importer.preloaded_zaehlpunkt = {"active": True, "smartMeterReady": True}
+    importer.async_smartmeter.is_active = lambda _zaehlpunkt: True
+
+    async def _fake_get_last_inserted_statistics(
+        _statistic_id: str, _types: set[str], number_of_stats: int = 1
+    ):
+        assert number_of_stats in (1, 2)
+        return {}
+
+    async def _noop_async():
+        return None
+
+    monkeypatch.setattr(
+        importer, "_get_last_inserted_statistics", _fake_get_last_inserted_statistics
+    )
+    monkeypatch.setattr(importer, "_ensure_statistics_metadata", lambda: None)
+    monkeypatch.setattr(importer, "_backfill_cumulative_from_existing_sum", _noop_async)
+    monkeypatch.setattr(
+        importer, "_backfill_daily_consumption_from_existing_rows", _noop_async
+    )
+    monkeypatch.setattr(
+        importer, "_backfill_daily_meter_read_from_existing_rows", _noop_async
+    )
+
+    result = await importer.async_import()
+
+    assert result["daily_consumption_value"] == pytest.approx(3.5)
+    assert result["daily_consumption_day_value"] == pytest.approx(2.5)
+
+    statistic_ids: list[str] = []
+    for call_args, _kwargs in calls:
+        metadata = call_args[1]
+        statistic_id = (
+            metadata.get("statistic_id")
+            if isinstance(metadata, dict)
+            else metadata.statistic_id
+        )
+        statistic_ids.append(statistic_id)
+
+    assert any(statistic_id.endswith("_daily_cons") for statistic_id in statistic_ids)
+    assert any(statistic_id.endswith("_meter_read") for statistic_id in statistic_ids)
+    assert not any(statistic_id == importer.id for statistic_id in statistic_ids)
+
+
 def test_daily_consumption_stat_validity_requires_mean_when_supported(monkeypatch):
     importer = _build_importer({"unitOfMeasurement": "KWH", "values": []})
 

@@ -21,6 +21,7 @@ from .const import (
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
+_MAX_400_SPLIT_DEPTH = 5
 
 class AsyncSmartmeter:
 
@@ -102,6 +103,92 @@ class AsyncSmartmeter:
             deduplicated[key] = value
         return cls._sort_values(list(deduplicated.values()))
 
+    @staticmethod
+    def _is_status_400_error(err: Exception) -> bool:
+        text = str(err)
+        return "status 400" in text
+
+    async def _fetch_single_or_split(
+        self,
+        zaehlpunkt: str,
+        request_fn,
+        range_start: datetime | None,
+        range_end: datetime | None,
+        *,
+        error_message: str,
+        debug_label: str,
+        translate_map: list[tuple[str, str]] | None = None,
+        extra_args: tuple | None = None,
+        split_depth: int = 0,
+    ) -> list[dict[str, any]]:
+        args_tail = extra_args or ()
+        try:
+            response = await self.hass.async_add_executor_job(
+                request_fn,
+                zaehlpunkt,
+                range_start,
+                range_end,
+                *args_tail,
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            if (
+                range_start is None
+                or range_end is None
+                or not self._is_status_400_error(err)
+            ):
+                raise
+
+            start_utc = self._ensure_utc(range_start)
+            end_utc = self._ensure_utc(range_end)
+            if start_utc is None or end_utc is None:
+                raise
+            day_span = (end_utc.date() - start_utc.date()).days + 1
+            if day_span <= 1 or split_depth >= _MAX_400_SPLIT_DEPTH:
+                raise
+
+            split_days = day_span // 2
+            left_end = start_utc + timedelta(days=split_days - 1)
+            right_start = left_end + timedelta(days=1)
+            _LOGGER.debug(
+                "%s returned HTTP 400 for %s..%s (%d days). Retrying with smaller ranges.",
+                debug_label,
+                start_utc.date(),
+                end_utc.date(),
+                day_span,
+            )
+            left_chunks = await self._fetch_single_or_split(
+                zaehlpunkt,
+                request_fn,
+                start_utc,
+                left_end,
+                error_message=error_message,
+                debug_label=debug_label,
+                translate_map=translate_map,
+                extra_args=extra_args,
+                split_depth=split_depth + 1,
+            )
+            right_chunks = await self._fetch_single_or_split(
+                zaehlpunkt,
+                request_fn,
+                right_start,
+                end_utc,
+                error_message=error_message,
+                debug_label=debug_label,
+                translate_map=translate_map,
+                extra_args=extra_args,
+                split_depth=split_depth + 1,
+            )
+            return left_chunks + right_chunks
+
+        if "Exception" in response:
+            raise RuntimeError(f"{error_message}: {response}")
+        _LOGGER.debug("%s: %s", debug_label, response)
+        return [
+            translate_dict(response, translate_map)
+            if translate_map is not None
+            else response
+        ]
+
     async def _fetch_chunked(
         self,
         zaehlpunkt: str,
@@ -119,22 +206,18 @@ class AsyncSmartmeter:
             return []
 
         chunks: list[dict[str, any]] = []
-        args_tail = extra_args or ()
         for range_start, range_end in ranges:
-            response = await self.hass.async_add_executor_job(
-                request_fn,
-                zaehlpunkt,
-                range_start,
-                range_end,
-                *args_tail,
-            )
-            if "Exception" in response:
-                raise RuntimeError(f"{error_message}: {response}")
-            _LOGGER.debug("%s: %s", debug_label, response)
-            chunks.append(
-                translate_dict(response, translate_map)
-                if translate_map is not None
-                else response
+            chunks.extend(
+                await self._fetch_single_or_split(
+                    zaehlpunkt,
+                    request_fn,
+                    range_start,
+                    range_end,
+                    error_message=error_message,
+                    debug_label=debug_label,
+                    translate_map=translate_map,
+                    extra_args=extra_args,
+                )
             )
         return chunks
 
