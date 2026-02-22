@@ -55,7 +55,8 @@
           "selected_zaehlpunkte": "Meters"
         },
         "data_description": {
-          "historical_days": "Default: {historical_days_default} days. Limit: {historical_days_limit} days. Data is fetched in 1-year chunks ({historical_days_chunk} days)."
+          "historical_days": "Default: {historical_days_default} days. Limit: {historical_days_limit} days. Data is fetched in 1-year chunks ({historical_days_chunk} days).",
+          "selected_zaehlpunkte": "Set alias for display names:"
         }
       }
     }

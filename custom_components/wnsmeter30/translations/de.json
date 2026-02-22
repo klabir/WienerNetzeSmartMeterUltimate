@@ -55,7 +55,8 @@
           "selected_zaehlpunkte": "Zähler"
         },
         "data_description": {
-          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen."
+          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen.",
+          "selected_zaehlpunkte": "Alias für Anzeigenamen setzen:"
         }
       }
     }
