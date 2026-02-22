@@ -33,6 +33,15 @@ from .naming import normalize_meter_aliases
 from .utils import translate_dict
 
 _LOGGER = logging.getLogger(__name__)
+_ALIAS_DISPLAY_NAMES_HEADER = "alias_display_names_header"
+
+
+def _alias_display_names_header_field():
+    """Return a static header field rendered with normal field font size."""
+    try:
+        return selector.ConstantSelector(selector.ConstantSelectorConfig(value=""))
+    except Exception:  # pylint: disable=broad-except
+        return None
 
 def _scan_interval_field(default_scan_interval: int):
     """Return a version-safe scan interval field."""
@@ -263,6 +272,9 @@ def _options_schema(
             default=selected_meters,
         ): _meter_select_field(meter_options),
     }
+    header_field = _alias_display_names_header_field()
+    if header_field is not None:
+        fields[vol.Optional(_ALIAS_DISPLAY_NAMES_HEADER, default="")] = header_field
     for meter_id in selected_meters:
         fields[vol.Optional(meter_id, default=meter_aliases.get(meter_id, ""))] = cv.string
     fields[
@@ -361,6 +373,8 @@ class WienerNetzeSmartMeterCustomConfigFlow(config_entries.ConfigFlow, domain=DO
             current_selected = default_selected
 
         if user_input is not None:
+            user_input = dict(user_input)
+            user_input.pop(_ALIAS_DISPLAY_NAMES_HEADER, None)
             selected_meters = _normalize_selected_meters(
                 user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
             )
@@ -502,6 +516,8 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
         )
 
         if user_input is not None:
+            user_input = dict(user_input)
+            user_input.pop(_ALIAS_DISPLAY_NAMES_HEADER, None)
             selected_meters = _normalize_selected_meters(
                 user_input.get(CONF_SELECTED_ZAEHLPUNKTE)
             )
@@ -530,7 +546,6 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 alias_value = str(user_input.get(meter_id, "")).strip()
                 if alias_value:
                     aliases[meter_id] = alias_value
-            user_input = dict(user_input)
             user_input[CONF_SELECTED_ZAEHLPUNKTE] = selected_meters
             user_input[CONF_ZAEHLPUNKT_ALIASES] = aliases
             user_input[CONF_HISTORICAL_DAYS] = _normalize_historical_days(
