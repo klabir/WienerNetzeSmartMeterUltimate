@@ -59,6 +59,20 @@ For each selected meter, these statistic IDs are used:
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Enabled | Toggle: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Enabled | Toggle: `Enable daily total consumption historical values (Zählerstand) and statistics (Suffix _daily_meter_read).` Energy Dashboard stream (`sum` is monotonic). |
 
+### `_cum_abs` vs `_daily_cons`
+
+Granularity:
+- `_cum_abs`: hourly points (derived from finer input).
+- `_daily_cons`: daily points.
+
+Upstream data source:
+- `_cum_abs`: quarter-hour/higher-resolution movement data.
+- `_daily_cons`: daily endpoint values.
+
+When to prefer which:
+- Use `_cum_abs` when you want finer trend continuity from high-resolution source data.
+- Use `_daily_cons` when you want a stream aligned to daily historical values and daily sensor behavior.
+
 ## Configuration Defaults
 
 Default values in the UI:

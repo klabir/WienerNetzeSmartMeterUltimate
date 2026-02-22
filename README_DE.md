@@ -59,6 +59,20 @@ Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).` |
 | `wnsmeter30:<zaehlpunkt_lowercase>_daily_meter_read` | Aktiviert | Schalter: `Tägliche historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix _daily_meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
 
+### `_cum_abs` vs `_daily_cons`
+
+Granularitaet:
+- `_cum_abs`: stuendliche Punkte (aus feinerem Input abgeleitet).
+- `_daily_cons`: taegliche Punkte.
+
+Upstream-Datenquelle:
+- `_cum_abs`: Viertelstunden-/hoeher aufgeloeste Bewegungsdaten.
+- `_daily_cons`: taegliche Endpoint-Werte.
+
+Wann welche bevorzugen:
+- Nutze `_cum_abs`, wenn du eine feinere Trend-Kontinuitaet aus hochaufgeloesten Quelldaten willst.
+- Nutze `_daily_cons`, wenn du einen Stream willst, der zu taeglichen historischen Werten und zum taeglichen Sensorverhalten passt.
+
 ## Konfigurationsstandardwerte
 
 Standardwerte in der UI:
