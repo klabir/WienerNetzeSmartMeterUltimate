@@ -233,7 +233,7 @@ Wichtiger Hinweis:
 
 ![Total Consumption Reset nach Austausch der Smartmeter-Hardware](doc/Totalgetsreset.png)
 
-In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware getauscht, und Total Consumption (Zaehlerstand) wurde auf null zurueckgesetzt.
+In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware zweimal getauscht, und Total Consumption (Zaehlerstand) wurde 2-mal auf null zurueckgesetzt.
 
 ## Energy Dashboard
 
