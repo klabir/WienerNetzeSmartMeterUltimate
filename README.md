@@ -237,7 +237,7 @@ In this example, Wiener Netze Smart Meter hardware was exchanged, and Total Cons
 
 ## Energy Dashboard
 
-If you have a Smart Meter hardware exchange, we recommend using statistics with suffix `_meter_read`.
+If you have a Smart Meter hardware exchange, we recommend using statistics with the main sensor: `sensor.zaehlpunkt`.
 Otherwise your daily value can be wrong.
 
 ## After Changing Options
