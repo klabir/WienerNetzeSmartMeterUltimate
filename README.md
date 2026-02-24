@@ -240,7 +240,7 @@ In this example, Wiener Netze Smart Meter hardware was exchanged twice, and Tota
 
 ## Energy Dashboard
 
-We recommend using sensor.<zaehlpunkt>.
+We recommend using sensor.zaehlpunkt.
 
 ## After Changing Options
 

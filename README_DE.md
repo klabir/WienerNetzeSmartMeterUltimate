@@ -240,7 +240,7 @@ In diesem Beispiel wurde die Wiener Netze Smart Meter Hardware zweimal ausgetaus
 
 ## Energy Dashboard
 
-We recommend using sensor.<zaehlpunkt>.
+We recommend using sensor.zaehlpunkt.
 
 ## Nach dem Aendern von Optionen
 
