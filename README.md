@@ -194,10 +194,11 @@ hide_legend: true
 
 ```yaml
 type: statistic
-entity: sensor.at0010000000000000001000009111111
+entity: wnsmeter30:at0010000000000000001000000000000
 period:
   calendar:
-    period: month
+    period: day
+    offset: -1
 stat_type: change
 ```
 
@@ -239,7 +240,7 @@ In this example, Wiener Netze Smart Meter hardware was exchanged twice, and Tota
 
 ## Energy Dashboard
 
-If you have a Smart Meter hardware exchange, we recommend using sensor<zaehlpunkt>.
+We recommend using sensor.<zaehlpunkt>.
 
 ## After Changing Options
 

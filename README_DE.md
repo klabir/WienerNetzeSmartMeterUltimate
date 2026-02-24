@@ -194,10 +194,11 @@ hide_legend: true
 
 ```yaml
 type: statistic
-entity: sensor.at0010000000000000001000009111111
+entity: wnsmeter30:at0010000000000000001000000000000
 period:
   calendar:
-    period: month
+    period: day
+    offset: -1
 stat_type: change
 ```
 
@@ -239,7 +240,7 @@ In diesem Beispiel wurde die Wiener Netze Smart Meter Hardware zweimal ausgetaus
 
 ## Energy Dashboard
 
-Wenn bei dir ein Smart Meter Hardwaretausch stattgefunden hat, empfehlen wir die Verwendung von `sensor<zaehlpunkt>`.
+We recommend using sensor.<zaehlpunkt>.
 
 ## Nach dem Aendern von Optionen
 
