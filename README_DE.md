@@ -238,7 +238,6 @@ In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware zweimal getauscht,
 ## Energy Dashboard
 
 Wenn bei dir ein Smartmeter-Hardwaretausch stattgefunden hat, empfehlen wir die Nutzung der Statistik mit dem Hauptsensor: `sensor.zaehlpunkt`.
-Andernfalls kann dein Tageswert falsch sein.
 
 ## Nach dem Aendern von Optionen
 
