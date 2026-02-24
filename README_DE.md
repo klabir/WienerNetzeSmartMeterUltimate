@@ -34,7 +34,7 @@ Beispiel Entitaetenansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
 
 Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
 
-![Wiener Netze Smartmeter - Uebersicht erstellter Statistik-Streams](doc/statistics_blurred.png)
+![Wiener Netze Smartmeter - Uebersicht erstellter Statistik-Streams](doc/stat3.png)
 
 ## Erstellte Sensoren
 
@@ -250,3 +250,4 @@ Nach dem Aendern von Optionen in der Integration:
 
 Diese Integration basiert auf der Originalarbeit von DarwinsBuddy:
 - https://github.com/DarwinsBuddy/WienerNetzeSmartmeter
+

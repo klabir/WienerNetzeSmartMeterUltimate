@@ -34,7 +34,7 @@ Entities view example (meter numbers blurred, suffixes kept readable):
 
 Statistics view example (meter numbers blurred, suffixes kept readable):
 
-![Wiener Netze Smartmeter - Created statistics streams overview](doc/statistics_blurred.png)
+![Wiener Netze Smartmeter - Created statistics streams overview](doc/stat3.png)
 
 ## Created Sensors
 
@@ -253,3 +253,4 @@ After changing options in the integration:
 
 This integration is based on the original work by DarwinsBuddy:
 - https://github.com/DarwinsBuddy/WienerNetzeSmartmeter
+
