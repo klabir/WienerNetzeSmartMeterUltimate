@@ -14,7 +14,7 @@ Custom component folder name: `custom_components/wnsmeter30`.
 
 Use the Home Assistant integration dialog to enter your Wiener Netze username and password.
 
-![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/loginscreen.png)
+![Wiener Netze Smartmeter Authentication - Initial setup login screen](doc/setupwndsmultimate.png)
 
 After login, Home Assistant opens meter selection. Keep the preselected meters selected and submit.
 By default, active and smart-meter-ready meters are preselected.
@@ -30,7 +30,7 @@ For each selected meter (`zaehlpunkt`), the integration can create up to 3 senso
 
 Entities view example (meter numbers blurred, suffixes kept readable):
 
-![Wiener Netze Smartmeter - Created entities overview](doc/Entities_blurred.png)
+![Wiener Netze Smartmeter - Created entities overview](doc/entities3.png)
 
 Statistics view example (meter numbers blurred, suffixes kept readable):
 
@@ -78,6 +78,8 @@ When to prefer which:
 - Use `_daily_cons` when you want a stream aligned to daily historical values and daily sensor behavior.
 
 ## Configuration Defaults
+
+![Wiener Netze Smartmeter - Config Options ](doc/configUIWNSM.png)
 
 Default values in the UI:
 - `Scan interval (minutes)`: `360` (6 hours, allowed range `5-720`)
@@ -233,11 +235,11 @@ Important note:
 
 ![Total Consumption reset after smart meter hardware exchange](doc/Totalgetsreset.png)
 
-In this example, Wiener Netze Smart Meter hardware was exchanged twice, and Total Consumption (Zaehlerstand) got reset to zero 2 times.
+In this example, Wiener Netze Smart Meter hardware was exchanged, and Total Consumption (Zaehlerstand) got reset to zero.
 
 ## Energy Dashboard
 
-If you have a Smart Meter hardware exchange, we recommend using statistics with the main sensor: `sensor.zaehlpunkt`.
+If you have a Smart Meter hardware exchange, we recommend using statistics with suffix `_meter_read`.
 Otherwise your daily value can be wrong.
 
 ## After Changing Options
