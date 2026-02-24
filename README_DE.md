@@ -14,13 +14,13 @@ Ordnername der Custom Component: `custom_components/wnsmeter30`.
 
 Verwende den Home Assistant Integrationsdialog, um deinen Wiener Netze Benutzernamen und dein Passwort einzugeben.
 
-![Wiener Netze Smartmeter Authentifizierung - Login-Bildschirm der Ersteinrichtung](doc/loginscreen.png)
+![Wiener Netze Smartmeter Authentifizierung - Login-Bildschirm der Ersteinrichtung](doc/setupwndsmultimate.png)
 
 Nach dem Login oeffnet Home Assistant die Zaehlerauswahl. Lass die vorausgewaehlten Zaehler ausgewaehlt und bestaetige.
 Standardmaessig sind aktive und smart-meter-bereite Zaehler vorausgewaehlt.
-Wenn kein Zaehler diesen Status hat, werden alle gefundenen Zaehler vorausgewaehlt.
+Wenn kein Zaehler diesem Status entspricht, werden alle gefundenen Zaehler vorausgewaehlt.
 Inaktive Zaehler koennen in der Liste erscheinen.
-Nach der Zaehlerauswahl erscheint ein Alias-Schritt mit der Beschreibung: `Anzeigenamen für den Zählerstand ändern.`
+Nach der Zaehlerauswahl erscheint ein Alias-Schritt mit der Beschreibung: `Change the Display Name of Reading Meter.`
 
 ![Wiener Netze Smartmeter - Zaehler auswaehlen](doc/SelectedMeters.png)
 
@@ -28,11 +28,11 @@ Nach der Zaehlerauswahl erscheint ein Alias-Schritt mit der Beschreibung: `Anzei
 
 Fuer jeden ausgewaehlten Zaehler (`zaehlpunkt`) kann die Integration bis zu 3 Sensor-Entitaeten erstellen.
 
-Beispiel Entitaetenansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
+Beispiel Entitaetenansicht (Zaehlernummern unkenntlich gemacht, Suffixe bleiben lesbar):
 
-![Wiener Netze Smartmeter - Uebersicht erstellter Entitaeten](doc/Entities_blurred.png)
+![Wiener Netze Smartmeter - Uebersicht erstellter Entitaeten](doc/entities3.png)
 
-Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
+Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe bleiben lesbar):
 
 ![Wiener Netze Smartmeter - Uebersicht erstellter Statistik-Streams](doc/stat3.png)
 
@@ -40,11 +40,11 @@ Beispiel Statistikansicht (Zaehlernummern unkenntlich gemacht, Suffixe lesbar):
 
 `<zaehlpunkt>` unten bedeutet deine Zaehler-ID, zum Beispiel `at0010000000000000001000009111111`.
 
-| Entity ID pattern | Standardmaessig erstellt | Typ | Beschreibung |
+| Entity-ID-Muster | Standardmaessig erstellt | Typ | Beschreibung |
 | --- | --- | --- | --- |
 | `sensor.<zaehlpunkt>` | Ja | Sensor-Entitaet | Hauptsensor fuer Gesamtenergie (kWh), `total_increasing`. |
-| `sensor.<zaehlpunkt>_daily_cons` | Ja (wenn `_daily_cons` aktiviert ist) | Sensor-Entitaet | Neuester kumulativer Wert aus dem taeglichen historischen Verbrauchs-Stream (kWh). |
-| `sensor.<zaehlpunkt>_daily_cons_day` | Ja (wenn `_daily_cons` aktiviert ist) | Sensor-Entitaet | Neuester Tageswert (taegliche Differenz) aus dem taeglichen Verbrauchs-Stream (kWh). |
+| `sensor.<zaehlpunkt>_daily_cons` | Ja (wenn der `_daily_cons` Schalter aktiviert ist) | Sensor-Entitaet | Neuester kumulativer Wert aus dem taeglichen historischen Verbrauchs-Stream (kWh). |
+| `sensor.<zaehlpunkt>_daily_cons_day` | Ja (wenn der `_daily_cons` Schalter aktiviert ist) | Sensor-Entitaet | Neuester Tageswert (taegliche Differenz), abgeleitet aus dem taeglichen Verbrauchs-Stream (kWh). |
 
 Wichtig:
 - Es gibt derzeit keine dedizierte `sensor.<zaehlpunkt>_meter_read` Entitaet.
@@ -54,38 +54,40 @@ Wichtig:
 
 Fuer jeden ausgewaehlten Zaehler werden diese Statistik-IDs verwendet:
 
-| Statistic ID pattern | Standard | Gesteuert durch |
+| Statistik-ID-Muster | Standard | Gesteuert durch |
 | --- | --- | --- |
 | `wnsmeter30:<zaehlpunkt_lowercase>` | Aktiviert | Immer aktiv |
 | `wnsmeter30:<zaehlpunkt_lowercase>_cum_abs` | Aktiviert | Immer aktiv |
-| `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).` |
-| `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Aktiviert | Schalter: `Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
+| `wnsmeter30:<zaehlpunkt_lowercase>_daily_cons` | Aktiviert | Schalter: `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).` |
+| `wnsmeter30:<zaehlpunkt_lowercase>_meter_read` | Aktiviert | Schalter: `Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).` Energy-Dashboard-Stream (`sum` ist monoton). |
 
-Wenn `Alias auch für Statistik- und Entitäts-IDs verwenden` aktiviert ist und ein Alias vorhanden ist, verwenden Statistik-IDs einen Alias-Slug statt `<zaehlpunkt_lowercase>`.
+Wenn `Use alias also for statistic and entity IDs` aktiviert ist und ein Alias existiert, verwenden Statistik-IDs einen Alias-basierten Slug anstelle von `<zaehlpunkt_lowercase>`.
 
 ### `_cum_abs` vs `_daily_cons`
 
 Granularitaet:
-- `_cum_abs`: stuendliche Punkte (aus feinerem Input abgeleitet).
-- `_daily_cons`: taegliche Punkte.
+- `_cum_abs`: stuendliche Datenpunkte (aus feinerem Input abgeleitet).
+- `_daily_cons`: taegliche Datenpunkte.
 
-Upstream-Datenquelle:
+Datenquelle:
 - `_cum_abs`: Viertelstunden-/hoeher aufgeloeste Bewegungsdaten.
 - `_daily_cons`: taegliche Endpoint-Werte.
 
-Wann welche bevorzugen:
+Wann welche Variante sinnvoll ist:
 - Nutze `_cum_abs`, wenn du eine feinere Trend-Kontinuitaet aus hochaufgeloesten Quelldaten willst.
-- Nutze `_daily_cons`, wenn du einen Stream willst, der zu taeglichen historischen Werten und zum taeglichen Sensorverhalten passt.
+- Nutze `_daily_cons`, wenn du einen Stream willst, der zu taeglichen historischen Werten und taeglichem Sensorverhalten passt.
 
 ## Konfigurationsstandardwerte
 
+![Wiener Netze Smartmeter - Konfigurationsoptionen](doc/configUIWNSM.png)
+
 Standardwerte in der UI:
-- `Abfrageintervall (Minuten)`: `360` (6 Stunden, erlaubter Bereich `5-720`)
-- `Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).`: `True`
-- `Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).`: `True`
-- `Alias auch für Statistik- und Entitäts-IDs verwenden`: `False`
-- `Zähler`: aktive/smart-meter-bereite Zaehler sind standardmaessig vorausgewaehlt; falls keiner passt, werden alle gefundenen Zaehler vorausgewaehlt
-- `Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben`: `False`
+- `Scan interval (minutes)`: `360` (6 Stunden, erlaubter Bereich `5-720`)
+- `Enable daily historical values, sensor, and statistics (Suffix _daily_cons).`: `True`
+- `Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).`: `True`
+- `Use alias also for statistic and entity IDs`: `False`
+- `Meters`: aktive/smart-meter-bereite Zaehler sind standardmaessig vorausgewaehlt; falls keiner passt, werden alle gefundenen Zaehler vorausgewaehlt
+- `Enable raw Api Response written to /config/tmp/wnsm_api_calls`: `False`
 
 ## Schalterverhalten
 
@@ -112,7 +114,7 @@ Wenn deaktiviert:
 - Es werden keine neuen `_meter_read` Statistiken importiert.
 - Vorhandene andere Sensoren/Entitaeten bleiben unveraendert.
 
-## Typisches Tile Card Beispiel
+## Typisches Tile-Card-Beispiel
 
 Tageswert anzeigen (nicht kumuliert):
 
@@ -123,7 +125,7 @@ vertical: false
 features_position: bottom
 ```
 
-## Dashboard Card Beispiele
+## Dashboard-Card-Beispiele
 
 Hinweis:
 - Alle Beispiele unten verwenden die Beispiel-`zaehlpunkt`-ID `at0010000000000000001000009111111`.
@@ -135,7 +137,7 @@ Hinweis:
 chart_type: bar
 period: day
 type: statistics-graph
-title: Taeglicher Verbrauch
+title: Daily Consumption
 entities:
   - wnsmeter30:at0010000000000000001000009111111
 hide_legend: true
@@ -149,7 +151,7 @@ stat_types:
 chart_type: bar
 period: day
 type: statistics-graph
-title: Gesamtverbrauch pro Tag aus stuendlicher Summe
+title: Total Consumption per Day from Hourly Sum
 days_to_show: 30
 entities:
   - wnsmeter30:at0010000000000000001000009111111_cum_abs
@@ -164,7 +166,7 @@ hide_legend: true
 chart_type: bar
 period: day
 type: statistics-graph
-title: Gesamtverbrauch pro Tag aus Tagessumme
+title: Total Consumption per Day from Day Sum
 days_to_show: 30
 entities:
   - wnsmeter30:at0010000000000000001000009111111_daily_cons
@@ -179,7 +181,7 @@ hide_legend: true
 chart_type: bar
 period: day
 type: statistics-graph
-title: Gesamtverbrauch kumuliert (30 Tage)
+title: Einspeisung kumuliert (30 Tage)
 days_to_show: 30
 entities:
   - wnsmeter30:at0010000000000000001000009111111_meter_read
@@ -227,27 +229,26 @@ features_position: bottom
 ```
 
 Wichtiger Hinweis:
-- Wenn die Smartmeter-Hardware getauscht wird (zum Beispiel wegen eines Defekts), koennen Summen aus Historical Day und Historical Hour vom Total Consumption Wert abweichen.
-- Historical Day und Historical Hour Summen sollten ueber die Zeit miteinander konsistent bleiben.
+- Wenn die Smartmeter-Hardware ausgetauscht wird (zum Beispiel wegen eines Defekts), koennen Summen aus Historical Day und Historical Hour vom Wert Total Consumption abweichen.
+- Die Summen aus Historical Day und Historical Hour sollten ueber die Zeit zueinander konsistent bleiben.
 - Total Consumption entspricht dem "Zaehlerstand" im Wiener Netze Smart Meter Portal.
 
 ![Total Consumption Reset nach Austausch der Smartmeter-Hardware](doc/Totalgetsreset.png)
 
-In diesem Beispiel wurde die Wiener Netze Smartmeter-Hardware zweimal getauscht, und Total Consumption (Zaehlerstand) wurde 2-mal auf null zurueckgesetzt.
+In diesem Beispiel wurde die Wiener Netze Smart Meter Hardware zweimal ausgetauscht, und Total Consumption (Zaehlerstand) wurde auf null zurueckgesetzt.
 
 ## Energy Dashboard
 
-Wenn bei dir ein Smartmeter-Hardwaretausch stattgefunden hat, empfehlen wir die Nutzung der Statistik mit dem Hauptsensor: `sensor.zaehlpunkt`
+Wenn bei dir ein Smart Meter Hardwaretausch stattgefunden hat, empfehlen wir die Verwendung von `sensor<zaehlpunkt>`.
 
 ## Nach dem Aendern von Optionen
 
 Nach dem Aendern von Optionen in der Integration:
 - Home Assistant laedt die Integration automatisch neu.
-- Du kannst dort auch die ausgewaehlten Zaehler aendern.
-- Falls noetig, fuehre einen kompletten Home Assistant Neustart aus, um sofortiges Aktualisieren von Entitaeten/Statistiken zu erzwingen.
+- Du kannst im selben Optionsdialog auch die ausgewaehlten Zaehler aendern.
+- Falls noetig, fuehre einen kompletten Home Assistant Neustart aus, um das sofortige Aktualisieren von Entitaeten/Statistiken zu erzwingen.
 
 ## Credits
 
 Diese Integration basiert auf der Originalarbeit von DarwinsBuddy:
 - https://github.com/DarwinsBuddy/WienerNetzeSmartmeter
-

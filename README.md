@@ -235,12 +235,11 @@ Important note:
 
 ![Total Consumption reset after smart meter hardware exchange](doc/Totalgetsreset.png)
 
-In this example, Wiener Netze Smart Meter hardware was exchanged, and Total Consumption (Zaehlerstand) got reset to zero.
+In this example, Wiener Netze Smart Meter hardware was exchanged twice, and Total Consumption (Zaehlerstand) got reset to zero.
 
 ## Energy Dashboard
 
-If you have a Smart Meter hardware exchange, we recommend using statistics with suffix `_meter_read`.
-Otherwise your daily value can be wrong.
+If you have a Smart Meter hardware exchange, we recommend using sensor<zaehlpunkt>.
 
 ## After Changing Options
 
