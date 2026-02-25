@@ -1,0 +1,64 @@
+{
+  "config": {
+    "error": {
+      "auth": "Benutzername/Passwort ungültig",
+      "connection_error": "Verbindung konnte nicht hergestellt werden",
+      "no_meter_selected": "Wähle mindestens einen Zähler aus"
+    },
+    "flow_title": "Wiener Netze Smartmeter Ultimate",
+    "step": {
+      "user": {
+        "title": "Wiener Netze Smartmeter Ultimate Authentifizierung",
+        "description": "Gib deine Wiener Netze Smartmeter Ultimate Zugangsdaten ein",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "scan_interval": "Abfrageintervall (Minuten)",
+          "historical_days": "Tage für historische API-Aufrufe",
+          "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
+          "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
+          "enable_daily_meter_read": "Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).",
+          "use_alias_for_ids": "Alias auch für Statistik- und Entitäts-IDs verwenden"
+        },
+        "data_description": {
+          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen."
+        }
+      },
+      "select_meters": {
+        "title": "Zähler auswählen",
+        "description": "Wähle, welche erkannten Zähler als Entitäten erstellt werden sollen.",
+        "data": {
+          "selected_zaehlpunkte": "Zähler"
+        }
+      },
+      "meter_aliases": {
+        "title": "Zähler-Aliase",
+        "description": "Anzeigenamen für den Zählerstand ändern."
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "no_meter_selected": "Wähle mindestens einen Zähler aus"
+    },
+    "step": {
+      "init": {
+        "title": "Wiener Netze Smartmeter Ultimate Optionen",
+        "description": "Polling-Verhalten konfigurieren. Speichern lädt die Integration automatisch neu.",
+        "data": {
+          "scan_interval": "Abfrageintervall (Minuten)",
+          "historical_days": "Tage für historische API-Aufrufe",
+          "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
+          "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
+          "enable_daily_meter_read": "Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).",
+          "use_alias_for_ids": "Alias auch für Statistik- und Entitäts-IDs verwenden",
+          "selected_zaehlpunkte": "Zähler"
+        },
+        "data_description": {
+          "historical_days": "Standard: {historical_days_default} Tage. Limit: {historical_days_limit} Tage. Daten werden in 1-Jahres-Blöcken ({historical_days_chunk} Tage) geladen.",
+          "selected_zaehlpunkte": "Alias für Anzeigenamen setzen:"
+        }
+      }
+    }
+  }
+}
