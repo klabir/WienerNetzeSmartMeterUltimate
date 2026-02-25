@@ -18,6 +18,7 @@
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
           "enable_daily_meter_read": "Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).",
+          "enable_live_quarter_hour_sensor": "Enable live 15-minute sensor (QUARTER_HOUR).",
           "use_alias_for_ids": "Use alias also for statistic and entity IDs"
         },
         "data_description": {
@@ -51,6 +52,7 @@
           "enable_raw_api_response_write": "Enable raw Api Response written to /config/tmp/wnsm_api_calls",
           "enable_daily_cons": "Enable daily historical values, sensor, and statistics (Suffix _daily_cons).",
           "enable_daily_meter_read": "Enable total consumption historical values (Zählerstand) and statistics (Suffix meter_read).",
+          "enable_live_quarter_hour_sensor": "Enable live 15-minute sensor (QUARTER_HOUR).",
           "use_alias_for_ids": "Use alias also for statistic and entity IDs",
           "selected_zaehlpunkte": "Meters"
         },

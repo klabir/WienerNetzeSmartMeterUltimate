@@ -6,9 +6,11 @@ from typing import Any
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .AsyncSmartmeter import AsyncSmartmeter
 from .api import Smartmeter
+from .api.constants import ValueType
 from .const import DOMAIN
 from .importer import Importer
 from .naming import (
@@ -38,6 +40,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         enable_raw_api_response_write: bool,
         enable_daily_cons_statistics: bool,
         enable_daily_meter_read_statistics: bool,
+        enable_live_quarter_hour_sensor: bool,
         use_alias_for_ids: bool,
         log_scope: str,
     ) -> None:
@@ -60,6 +63,7 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         self._enable_raw_api_response_write = enable_raw_api_response_write
         self._enable_daily_cons_statistics = enable_daily_cons_statistics
         self._enable_daily_meter_read_statistics = enable_daily_meter_read_statistics
+        self._enable_live_quarter_hour_sensor = enable_live_quarter_hour_sensor
         self._smartmeter = Smartmeter(
             username=username,
             password=password,
@@ -139,6 +143,81 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             return (full_start, end), None
         return (short_start, end), (full_start, end)
 
+    @staticmethod
+    def _quarter_hour_factor(unit_of_measurement: str | None) -> float:
+        unit_upper = str(unit_of_measurement or "WH").upper()
+        if unit_upper == "WH":
+            return 1e-3
+        if unit_upper == "KWH":
+            return 1.0
+        _LOGGER.debug(
+            "Unknown quarter-hour unit '%s'. Assuming KWH for live value conversion.",
+            unit_of_measurement,
+        )
+        return 1.0
+
+    @staticmethod
+    def _extract_latest_quarter_hour_row(values: list[dict[str, Any]]) -> dict[str, Any] | None:
+        latest_row = None
+        latest_ts = None
+        for value in values:
+            raw_value = value.get("messwert")
+            if raw_value is None:
+                continue
+            ts = dt_util.parse_datetime(value.get("zeitBis") or value.get("zeitVon"))
+            if ts is None:
+                if latest_row is None:
+                    latest_row = value
+                continue
+            if latest_ts is None or ts > latest_ts:
+                latest_ts = ts
+                latest_row = value
+        return latest_row
+
+    async def _fetch_live_quarter_hour_reading(
+        self, zaehlpunkt: str
+    ) -> tuple[float | None, dict[str, Any]]:
+        today = datetime.now(timezone.utc).date()
+        historic_data = await self._async_smartmeter.get_historic_data(
+            zaehlpunkt=zaehlpunkt,
+            date_from=today,
+            date_to=today,
+            granularity=ValueType.QUARTER_HOUR,
+        )
+
+        values = historic_data.get("values")
+        if not isinstance(values, list) or len(values) == 0:
+            return None, {}
+
+        latest_row = self._extract_latest_quarter_hour_row(values)
+        if latest_row is None:
+            return None, {}
+
+        raw_reading = latest_row.get("messwert")
+        try:
+            raw_reading_float = float(raw_reading)
+        except (TypeError, ValueError):
+            _LOGGER.debug(
+                "Ignoring live quarter-hour reading with non-numeric value for %s: %s",
+                zaehlpunkt,
+                raw_reading,
+            )
+            return None, {}
+
+        unit = historic_data.get("unitOfMeasurement")
+        reading_kwh = raw_reading_float * self._quarter_hour_factor(unit)
+
+        return reading_kwh, {
+            "source_granularity": ValueType.QUARTER_HOUR.value,
+            "reading_time_from": latest_row.get("zeitVon"),
+            "reading_time_to": latest_row.get("zeitBis"),
+            "reading_quality": latest_row.get("qualitaet"),
+            "reading_raw_value": raw_reading,
+            "reading_unit": unit,
+            "reading_kwh": reading_kwh,
+            "equivalent_power_w": reading_kwh * 4000,
+        }
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
             await self._async_smartmeter.login()
@@ -150,6 +229,8 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             native_value: float | int | None = 0
             daily_cons_value: float | int | None = None
             daily_cons_day_value: float | int | None = None
+            live_quarter_hour_value: float | int | None = None
+            live_quarter_hour_attributes: dict[str, Any] = {}
             attributes: dict[str, Any] = {}
             available = True
             try:
@@ -177,6 +258,18 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                         )
                     if meter_reading is not None:
                         native_value = meter_reading
+                    if self._enable_live_quarter_hour_sensor:
+                        try:
+                            (
+                                live_quarter_hour_value,
+                                live_quarter_hour_attributes,
+                            ) = await self._fetch_live_quarter_hour_reading(zaehlpunkt)
+                        except Exception as exception:  # pylint: disable=broad-except
+                            _LOGGER.warning(
+                                "Failed to update live quarter-hour value for %s: %s",
+                                zaehlpunkt,
+                                exception,
+                            )
                     importer = Importer(
                         self.hass,
                         self._async_smartmeter,
@@ -206,6 +299,8 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                 "native_value": native_value,
                 "daily_cons_value": daily_cons_value,
                 "daily_cons_day_value": daily_cons_day_value,
+                "live_quarter_hour_value": live_quarter_hour_value,
+                "live_quarter_hour_attributes": live_quarter_hour_attributes,
                 "attributes": attributes,
                 "available": available,
             }

@@ -15,6 +15,7 @@ from .api.errors import (
     SmartmeterQueryError,
 )
 from .const import (
+    CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
     CONF_ENABLE_DAILY_METER_READ,
     ATTRS_ZAEHLPUNKTE_CALL,
     CONF_ENABLE_DAILY_CONS,
@@ -27,6 +28,7 @@ from .const import (
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
     DEFAULT_USE_ALIAS_FOR_IDS,
     DEFAULT_HISTORICAL_DAYS,
     HISTORICAL_API_CHUNK_DAYS,
@@ -233,6 +235,10 @@ def user_schema(default_scan_interval: int, default_historical_days: int):
                 CONF_ENABLE_DAILY_METER_READ, default=DEFAULT_ENABLE_DAILY_METER_READ
             ): cv.boolean,
             vol.Optional(
+                CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+                default=DEFAULT_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+            ): cv.boolean,
+            vol.Optional(
                 CONF_USE_ALIAS_FOR_IDS, default=DEFAULT_USE_ALIAS_FOR_IDS
             ): cv.boolean,
             vol.Optional(CONF_ENABLE_RAW_API_RESPONSE_WRITE, default=False): cv.boolean,
@@ -247,6 +253,7 @@ def _options_schema(
     historical_days: int,
     enable_daily_cons: bool,
     enable_daily_meter_read: bool,
+    enable_live_quarter_hour_sensor: bool,
     use_alias_for_ids: bool,
     selected_meters: list[str],
     meter_options: list[dict[str, str]],
@@ -268,6 +275,10 @@ def _options_schema(
         vol.Optional(
             CONF_ENABLE_DAILY_METER_READ,
             default=enable_daily_meter_read,
+        ): cv.boolean,
+        vol.Optional(
+            CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+            default=enable_live_quarter_hour_sensor,
         ): cv.boolean,
         vol.Optional(
             CONF_USE_ALIAS_FOR_IDS,
@@ -511,6 +522,15 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ
             ),
         )
+        current_enable_live_quarter_hour_sensor = bool(
+            config_entry.options.get(
+                CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+                config_entry.data.get(
+                    CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+                    DEFAULT_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+                ),
+            )
+        )
         current_use_alias_for_ids = bool(
             config_entry.options.get(
                 CONF_USE_ALIAS_FOR_IDS,
@@ -537,6 +557,7 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                         historical_days=current_historical_days,
                         enable_daily_cons=current_enable_daily_cons,
                         enable_daily_meter_read=current_enable_daily_meter_read,
+                        enable_live_quarter_hour_sensor=current_enable_live_quarter_hour_sensor,
                         use_alias_for_ids=current_use_alias_for_ids,
                         selected_meters=current_selected_meters,
                         meter_options=meter_options,
@@ -568,6 +589,7 @@ class WienerNetzeSmartMeterOptionsFlow(config_entries.OptionsFlow):
                 historical_days=current_historical_days,
                 enable_daily_cons=current_enable_daily_cons,
                 enable_daily_meter_read=current_enable_daily_meter_read,
+                enable_live_quarter_hour_sensor=current_enable_live_quarter_hour_sensor,
                 use_alias_for_ids=current_use_alias_for_ids,
                 selected_meters=current_selected_meters,
                 meter_options=meter_options,

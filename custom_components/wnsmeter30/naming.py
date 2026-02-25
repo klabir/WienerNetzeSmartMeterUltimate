@@ -12,6 +12,7 @@ CUMULATIVE_SUFFIX = "_cum_abs"
 DAILY_CONS_SUFFIX = "_daily_cons"
 DAILY_CONS_DAY_SUFFIX = "_daily_cons_day"
 METER_READ_SUFFIX = "_meter_read"
+LIVE_QUARTER_HOUR_SUFFIX = "_quarter_hour_live"
 
 
 def normalize_meter_aliases(
@@ -145,3 +146,8 @@ def build_daily_cons_unique_id(entity_key: str) -> str:
 def build_daily_cons_day_unique_id(entity_key: str) -> str:
     """Build unique ID for daily consumption day sensor."""
     return f"{entity_key}{DAILY_CONS_DAY_SUFFIX}"
+
+
+def build_live_quarter_hour_unique_id(entity_key: str) -> str:
+    """Build unique ID for the live quarter-hour sensor."""
+    return f"{entity_key}{LIVE_QUARTER_HOUR_SUFFIX}"

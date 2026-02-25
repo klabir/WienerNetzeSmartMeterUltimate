@@ -4,6 +4,7 @@ import sys
 import types
 
 import it  # noqa: F401  # Ensure custom_components path is available
+import pytest
 
 if "psutil_home_assistant" not in sys.modules:
     stub = types.ModuleType("psutil_home_assistant")
@@ -24,6 +25,7 @@ if "fnv_hash_fast" not in sys.modules:
     sys.modules["fnv_hash_fast"] = fnv_stub
 
 from wnsmeter30.coordinator import WNSMDataUpdateCoordinator
+from wnsmeter30.api.constants import ValueType
 
 
 class _DummySmartmeter:
@@ -42,6 +44,16 @@ class _DummySmartmeter:
 
     def get_raw_api_logging_status(self) -> dict:
         return dict(self._logging_status)
+
+
+class _DummyAsyncSmartmeterQuarterHour:
+    def __init__(self, response: dict) -> None:
+        self.response = response
+        self.calls: list[tuple] = []
+
+    async def get_historic_data(self, zaehlpunkt, date_from, date_to, granularity):
+        self.calls.append((zaehlpunkt, date_from, date_to, granularity))
+        return self.response
 
 
 def _build_coordinator(
@@ -120,3 +132,53 @@ def test_inject_api_log_attributes_keeps_raw_api_logging_fields_when_enabled() -
     assert attributes["raw_api_logging_enabled"] is True
     assert attributes["api_call_count"] == 1
     assert attributes["last_api_call_file"] == "/tmp/wnsm_api_calls/AT001/call.json"
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_quarter_hour_reading_returns_latest_slot_with_attributes() -> None:
+    response = {
+        "unitOfMeasurement": "WH",
+        "values": [
+            {
+                "zeitVon": "2026-02-25T09:00:00.000Z",
+                "zeitBis": "2026-02-25T09:15:00.000Z",
+                "messwert": 125,
+                "qualitaet": "VAL",
+            },
+            {
+                "zeitVon": "2026-02-25T09:15:00.000Z",
+                "zeitBis": "2026-02-25T09:30:00.000Z",
+                "messwert": 250,
+                "qualitaet": "EST",
+            },
+        ],
+    }
+    coordinator = WNSMDataUpdateCoordinator.__new__(WNSMDataUpdateCoordinator)
+    coordinator._async_smartmeter = _DummyAsyncSmartmeterQuarterHour(response)  # type: ignore[attr-defined]
+
+    value, attributes = await coordinator._fetch_live_quarter_hour_reading("AT001")
+
+    assert value == pytest.approx(0.25)
+    assert attributes["reading_time_from"] == "2026-02-25T09:15:00.000Z"
+    assert attributes["reading_time_to"] == "2026-02-25T09:30:00.000Z"
+    assert attributes["reading_quality"] == "EST"
+    assert attributes["reading_raw_value"] == 250
+    assert attributes["reading_unit"] == "WH"
+    assert attributes["reading_kwh"] == pytest.approx(0.25)
+    assert attributes["equivalent_power_w"] == pytest.approx(1000.0)
+    assert attributes["source_granularity"] == ValueType.QUARTER_HOUR.value
+    assert coordinator._async_smartmeter.calls[0][0] == "AT001"  # type: ignore[attr-defined]
+    assert coordinator._async_smartmeter.calls[0][3] == ValueType.QUARTER_HOUR  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_quarter_hour_reading_returns_none_for_empty_values() -> None:
+    coordinator = WNSMDataUpdateCoordinator.__new__(WNSMDataUpdateCoordinator)
+    coordinator._async_smartmeter = _DummyAsyncSmartmeterQuarterHour(  # type: ignore[attr-defined]
+        {"unitOfMeasurement": "KWH", "values": []}
+    )
+
+    value, attributes = await coordinator._fetch_live_quarter_hour_reading("AT001")
+
+    assert value is None
+    assert attributes == {}

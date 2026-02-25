@@ -9,6 +9,7 @@ from homeassistant.const import (
     CONF_PASSWORD,
 )
 from .const import (
+    CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
     CONF_ENABLE_DAILY_CONS,
     CONF_ENABLE_DAILY_METER_READ,
     CONF_HISTORICAL_DAYS,
@@ -20,6 +21,7 @@ from .const import (
     CONF_ZAEHLPUNKTE,
     DEFAULT_ENABLE_DAILY_CONS,
     DEFAULT_ENABLE_DAILY_METER_READ,
+    DEFAULT_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
     DEFAULT_USE_ALIAS_FOR_IDS,
     DEFAULT_HISTORICAL_DAYS,
     MAX_HISTORICAL_DAYS,
@@ -29,6 +31,7 @@ from .const import (
 from .daily_cons_day_sensor import WNSMDailyConsDaySensor
 from .coordinator import WNSMDataUpdateCoordinator
 from .daily_cons_sensor import WNSMDailyConsSensor
+from .live_quarter_hour_sensor import WNSMLiveQuarterHourSensor
 from .naming import normalize_meter_aliases
 from .wnsm_sensor import WNSMSensor
 
@@ -106,6 +109,15 @@ async def async_setup_entry(
             config.get(CONF_ENABLE_DAILY_METER_READ, DEFAULT_ENABLE_DAILY_METER_READ),
         )
     )
+    enable_live_quarter_hour_sensor = bool(
+        config_entry.options.get(
+            CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+            config.get(
+                CONF_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+                DEFAULT_ENABLE_LIVE_QUARTER_HOUR_SENSOR,
+            ),
+        )
+    )
     use_alias_for_ids = bool(
         config_entry.options.get(
             CONF_USE_ALIAS_FOR_IDS,
@@ -135,6 +147,7 @@ async def async_setup_entry(
         enable_raw_api_response_write=enable_raw_api_response_write,
         enable_daily_cons_statistics=enable_daily_cons,
         enable_daily_meter_read_statistics=enable_daily_meter_read,
+        enable_live_quarter_hour_sensor=enable_live_quarter_hour_sensor,
         use_alias_for_ids=use_alias_for_ids,
         log_scope=config_entry.entry_id,
     )
@@ -150,6 +163,11 @@ async def async_setup_entry(
         )
         entities.extend(
             WNSMDailyConsDaySensor(coordinator, zaehlpunkt)
+            for zaehlpunkt in zaehlpunkte
+        )
+    if enable_live_quarter_hour_sensor:
+        entities.extend(
+            WNSMLiveQuarterHourSensor(coordinator, zaehlpunkt)
             for zaehlpunkt in zaehlpunkte
         )
     async_add_entities(entities)

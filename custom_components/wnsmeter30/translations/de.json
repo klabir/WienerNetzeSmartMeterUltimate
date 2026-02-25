@@ -18,6 +18,7 @@
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
           "enable_daily_meter_read": "Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).",
+          "enable_live_quarter_hour_sensor": "Live-15-Minuten-Sensor aktivieren (QUARTER_HOUR).",
           "use_alias_for_ids": "Alias auch für Statistik- und Entitäts-IDs verwenden"
         },
         "data_description": {
@@ -51,6 +52,7 @@
           "enable_raw_api_response_write": "Roh-API-Antworten nach /config/tmp/wnsm_api_calls schreiben",
           "enable_daily_cons": "Tägliche historische Werte, Sensor und Statistiken aktivieren (Suffix _daily_cons).",
           "enable_daily_meter_read": "Historische Gesamtverbrauchswerte (Zählerstand) und Statistiken aktivieren (Suffix meter_read).",
+          "enable_live_quarter_hour_sensor": "Live-15-Minuten-Sensor aktivieren (QUARTER_HOUR).",
           "use_alias_for_ids": "Alias auch für Statistik- und Entitäts-IDs verwenden",
           "selected_zaehlpunkte": "Zähler"
         },
