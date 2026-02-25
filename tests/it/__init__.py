@@ -513,7 +513,8 @@ def mock_authenticate(requests_mock: Mocker, username, password, code=RESPONSE_C
     authenticate_url = f'https://log.wien/auth/realms/logwien/login-actions/authenticate?{parse.urlencode(authenticate_query_params)}'
 
     # for some weird reason we have to perform this call before. maybe to create a login session. idk
-    requests_mock.post(authenticate_url, status_code=status,
+    first_step_status = 200 if status is None else status
+    requests_mock.post(authenticate_url, status_code=first_step_status,
                        additional_matcher=post_data_matcher({"username": username, "login": " "}),
                        text=files('test_resources').joinpath('auth.html').read_text()
                        )

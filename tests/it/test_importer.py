@@ -55,6 +55,9 @@ class _DummyAsyncSmartmeter:
     async def get_bewegungsdaten(self, *_args, **_kwargs) -> dict:
         return self._payload
 
+    async def login(self):
+        return None
+
     async def get_historic_daily_consumption(self, *_args, **_kwargs) -> dict:
         return self._daily_payload
 

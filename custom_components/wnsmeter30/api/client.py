@@ -62,10 +62,11 @@ class Smartmeter:
         self._api_gateway_b2b_token = None
         self._api_url = const.API_URL
         self._api_url_b2b = const.API_URL_B2B
-        
+        self._input_code_verifier = None
         self._code_verifier = None
         if input_code_verifier is not None:
             if self.is_valid_code_verifier(input_code_verifier):
+                self._input_code_verifier = input_code_verifier
                 self._code_verifier = input_code_verifier
         
         self._code_challenge = None
@@ -98,7 +99,7 @@ class Smartmeter:
         self._api_gateway_b2b_token = None
         self._api_url = const.API_URL
         self._api_url_b2b = const.API_URL_B2B
-        self._code_verifier = None
+        self._code_verifier = self._input_code_verifier
         self._code_challenge = None
         self._local_login_args = None
         self._raw_api_log_prepared = False

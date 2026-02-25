@@ -156,7 +156,7 @@ class _DummySmartmeterDaily400BeforeCutoff:
         self, zaehlpunkt: str, start: dt.datetime, end: dt.datetime
     ) -> dict:
         self.daily_calls.append((zaehlpunkt, start, end))
-        if end.date() < self.cutoff:
+        if start.date() < self.cutoff:
             raise RuntimeError(
                 "API request failed for endpoint 'zaehlpunkte/123/AT000/messwerte' with status 400: {}"
             )
