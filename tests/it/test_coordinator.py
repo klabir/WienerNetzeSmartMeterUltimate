@@ -187,8 +187,12 @@ async def test_fetch_live_quarter_hour_reading_prefers_bewegungsdaten_latest_slo
     assert attributes["reading_unit"] == "KWH"
     assert attributes["reading_kwh"] == pytest.approx(0.8)
     assert attributes["equivalent_power_w"] == pytest.approx(3200.0)
+    assert attributes["status"] == "ok"
     assert attributes["source_endpoint"] == "bewegungsdaten"
     assert attributes["source_granularity"] == ValueType.QUARTER_HOUR.value
+    assert attributes["source_attempt_order"] == ["bewegungsdaten"]
+    assert "lookup_window_start_utc" in attributes
+    assert "lookup_window_end_utc" in attributes
     assert coordinator._async_smartmeter.bewegungsdaten_calls[0][0] == "AT001"  # type: ignore[attr-defined]
     assert coordinator._async_smartmeter.bewegungsdaten_calls[0][3] == ValueType.QUARTER_HOUR  # type: ignore[attr-defined]
     assert coordinator._async_smartmeter.historic_calls == []  # type: ignore[attr-defined]
@@ -215,7 +219,9 @@ async def test_fetch_live_quarter_hour_reading_falls_back_to_historic_when_beweg
     value, attributes = await coordinator._fetch_live_quarter_hour_reading("AT001")
 
     assert value == pytest.approx(0.25)
+    assert attributes["status"] == "ok"
     assert attributes["source_endpoint"] == "historical_data"
+    assert attributes["source_attempt_order"] == ["bewegungsdaten", "historical_data"]
     assert attributes["reading_quality"] == "EST"
     assert attributes["reading_unit"] == "WH"
     assert attributes["reading_raw_value"] == 250
@@ -231,4 +237,9 @@ async def test_fetch_live_quarter_hour_reading_returns_none_for_empty_values() -
     value, attributes = await coordinator._fetch_live_quarter_hour_reading("AT001")
 
     assert value is None
-    assert attributes == {}
+    assert attributes["status"] == "no_data"
+    assert attributes["source_endpoint"] is None
+    assert attributes["source_granularity"] == ValueType.QUARTER_HOUR.value
+    assert attributes["source_attempt_order"] == ["bewegungsdaten", "historical_data"]
+    assert "lookup_window_start_utc" in attributes
+    assert "lookup_window_end_utc" in attributes

@@ -194,16 +194,47 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
     ) -> tuple[float | None, dict[str, Any]]:
         now = datetime.now(timezone.utc)
         lookup_start = now - timedelta(days=2)
+        lookup_window_start_utc = lookup_start.isoformat()
+        lookup_window_end_utc = now.isoformat()
+        attempted_sources: list[str] = []
+        source_errors: dict[str, str] = {}
+
+        def _diagnostic_attributes(
+            status: str, source_endpoint: str | None = None
+        ) -> dict[str, Any]:
+            attributes: dict[str, Any] = {
+                "status": status,
+                "source_endpoint": source_endpoint,
+                "source_granularity": ValueType.QUARTER_HOUR.value,
+                "source_attempt_order": list(attempted_sources),
+                "lookup_window_start_utc": lookup_window_start_utc,
+                "lookup_window_end_utc": lookup_window_end_utc,
+            }
+            if source_errors:
+                attributes["source_errors"] = dict(source_errors)
+            return attributes
 
         def _extract_from_payload(
             source_endpoint: str, payload: dict[str, Any]
         ) -> tuple[float | None, dict[str, Any]] | None:
             values = payload.get("values")
             if not isinstance(values, list) or len(values) == 0:
+                _LOGGER.debug(
+                    "Live quarter-hour source %s returned no values for %s (window %s to %s).",
+                    source_endpoint,
+                    zaehlpunkt,
+                    lookup_window_start_utc,
+                    lookup_window_end_utc,
+                )
                 return None
 
             latest_row = self._extract_latest_quarter_hour_row(values)
             if latest_row is None:
+                _LOGGER.debug(
+                    "Live quarter-hour source %s had values but no usable latest row for %s.",
+                    source_endpoint,
+                    zaehlpunkt,
+                )
                 return None
 
             raw_reading = self._extract_live_row_reading(latest_row)
@@ -223,11 +254,9 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             if reading_quality is None and latest_row.get("geschaetzt") is not None:
                 reading_quality = "EST" if bool(latest_row.get("geschaetzt")) else "VAL"
 
-            return (
-                reading_kwh,
+            attributes = _diagnostic_attributes("ok", source_endpoint)
+            attributes.update(
                 {
-                    "source_endpoint": source_endpoint,
-                    "source_granularity": ValueType.QUARTER_HOUR.value,
                     "reading_time_from": self._extract_live_row_time_from(latest_row),
                     "reading_time_to": self._extract_live_row_time_to(latest_row),
                     "reading_quality": reading_quality,
@@ -235,9 +264,25 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
                     "reading_unit": unit,
                     "reading_kwh": reading_kwh,
                     "equivalent_power_w": reading_kwh * 4000,
-                },
+                }
+            )
+            _LOGGER.debug(
+                "Live quarter-hour value for %s from %s: raw=%s %s, kWh=%s, from=%s, to=%s, quality=%s",
+                zaehlpunkt,
+                source_endpoint,
+                raw_reading,
+                unit,
+                reading_kwh,
+                attributes.get("reading_time_from"),
+                attributes.get("reading_time_to"),
+                reading_quality,
+            )
+            return (
+                reading_kwh,
+                attributes,
             )
 
+        attempted_sources.append("bewegungsdaten")
         try:
             bewegungsdaten = await self._async_smartmeter.get_bewegungsdaten(
                 zaehlpunkt=zaehlpunkt,
@@ -249,12 +294,14 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             if extracted is not None:
                 return extracted
         except Exception as exception:  # pylint: disable=broad-except
+            source_errors["bewegungsdaten"] = str(exception)
             _LOGGER.debug(
                 "Live quarter-hour bewegungsdaten request failed for %s: %s",
                 zaehlpunkt,
                 exception,
             )
 
+        attempted_sources.append("historical_data")
         try:
             historic_data = await self._async_smartmeter.get_historic_data(
                 zaehlpunkt=zaehlpunkt,
@@ -266,13 +313,21 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
             if extracted is not None:
                 return extracted
         except Exception as exception:  # pylint: disable=broad-except
+            source_errors["historical_data"] = str(exception)
             _LOGGER.debug(
                 "Live quarter-hour historical_data request failed for %s: %s",
                 zaehlpunkt,
                 exception,
             )
 
-        return None, {}
+        _LOGGER.debug(
+            "No live quarter-hour value for %s (attempted_sources=%s, window %s to %s).",
+            zaehlpunkt,
+            attempted_sources,
+            lookup_window_start_utc,
+            lookup_window_end_utc,
+        )
+        return None, _diagnostic_attributes("no_data")
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
