@@ -157,14 +157,29 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
         return 1.0
 
     @staticmethod
+    def _extract_live_row_reading(row: dict[str, Any]) -> Any:
+        return row.get("wert") if row.get("wert") is not None else row.get("messwert")
+
+    @staticmethod
+    def _extract_live_row_time_from(row: dict[str, Any]) -> Any:
+        return row.get("zeitpunktVon") or row.get("zeitVon")
+
+    @staticmethod
+    def _extract_live_row_time_to(row: dict[str, Any]) -> Any:
+        return row.get("zeitpunktBis") or row.get("zeitBis")
+
+    @staticmethod
     def _extract_latest_quarter_hour_row(values: list[dict[str, Any]]) -> dict[str, Any] | None:
         latest_row = None
         latest_ts = None
         for value in values:
-            raw_value = value.get("messwert")
+            raw_value = WNSMDataUpdateCoordinator._extract_live_row_reading(value)
             if raw_value is None:
                 continue
-            ts = dt_util.parse_datetime(value.get("zeitBis") or value.get("zeitVon"))
+            ts = dt_util.parse_datetime(
+                WNSMDataUpdateCoordinator._extract_live_row_time_to(value)
+                or WNSMDataUpdateCoordinator._extract_live_row_time_from(value)
+            )
             if ts is None:
                 if latest_row is None:
                     latest_row = value
@@ -177,46 +192,87 @@ class WNSMDataUpdateCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]
     async def _fetch_live_quarter_hour_reading(
         self, zaehlpunkt: str
     ) -> tuple[float | None, dict[str, Any]]:
-        today = datetime.now(timezone.utc).date()
-        historic_data = await self._async_smartmeter.get_historic_data(
-            zaehlpunkt=zaehlpunkt,
-            date_from=today,
-            date_to=today,
-            granularity=ValueType.QUARTER_HOUR,
-        )
+        now = datetime.now(timezone.utc)
+        lookup_start = now - timedelta(days=2)
 
-        values = historic_data.get("values")
-        if not isinstance(values, list) or len(values) == 0:
-            return None, {}
+        def _extract_from_payload(
+            source_endpoint: str, payload: dict[str, Any]
+        ) -> tuple[float | None, dict[str, Any]] | None:
+            values = payload.get("values")
+            if not isinstance(values, list) or len(values) == 0:
+                return None
 
-        latest_row = self._extract_latest_quarter_hour_row(values)
-        if latest_row is None:
-            return None, {}
+            latest_row = self._extract_latest_quarter_hour_row(values)
+            if latest_row is None:
+                return None
 
-        raw_reading = latest_row.get("messwert")
-        try:
-            raw_reading_float = float(raw_reading)
-        except (TypeError, ValueError):
-            _LOGGER.debug(
-                "Ignoring live quarter-hour reading with non-numeric value for %s: %s",
-                zaehlpunkt,
-                raw_reading,
+            raw_reading = self._extract_live_row_reading(latest_row)
+            try:
+                raw_reading_float = float(raw_reading)
+            except (TypeError, ValueError):
+                _LOGGER.debug(
+                    "Ignoring live quarter-hour reading with non-numeric value for %s: %s",
+                    zaehlpunkt,
+                    raw_reading,
+                )
+                return None
+
+            unit = payload.get("unitOfMeasurement")
+            reading_kwh = raw_reading_float * self._quarter_hour_factor(unit)
+            reading_quality = latest_row.get("qualitaet")
+            if reading_quality is None and latest_row.get("geschaetzt") is not None:
+                reading_quality = "EST" if bool(latest_row.get("geschaetzt")) else "VAL"
+
+            return (
+                reading_kwh,
+                {
+                    "source_endpoint": source_endpoint,
+                    "source_granularity": ValueType.QUARTER_HOUR.value,
+                    "reading_time_from": self._extract_live_row_time_from(latest_row),
+                    "reading_time_to": self._extract_live_row_time_to(latest_row),
+                    "reading_quality": reading_quality,
+                    "reading_raw_value": raw_reading,
+                    "reading_unit": unit,
+                    "reading_kwh": reading_kwh,
+                    "equivalent_power_w": reading_kwh * 4000,
+                },
             )
-            return None, {}
 
-        unit = historic_data.get("unitOfMeasurement")
-        reading_kwh = raw_reading_float * self._quarter_hour_factor(unit)
+        try:
+            bewegungsdaten = await self._async_smartmeter.get_bewegungsdaten(
+                zaehlpunkt=zaehlpunkt,
+                start=lookup_start,
+                end=now,
+                granularity=ValueType.QUARTER_HOUR,
+            )
+            extracted = _extract_from_payload("bewegungsdaten", bewegungsdaten)
+            if extracted is not None:
+                return extracted
+        except Exception as exception:  # pylint: disable=broad-except
+            _LOGGER.debug(
+                "Live quarter-hour bewegungsdaten request failed for %s: %s",
+                zaehlpunkt,
+                exception,
+            )
 
-        return reading_kwh, {
-            "source_granularity": ValueType.QUARTER_HOUR.value,
-            "reading_time_from": latest_row.get("zeitVon"),
-            "reading_time_to": latest_row.get("zeitBis"),
-            "reading_quality": latest_row.get("qualitaet"),
-            "reading_raw_value": raw_reading,
-            "reading_unit": unit,
-            "reading_kwh": reading_kwh,
-            "equivalent_power_w": reading_kwh * 4000,
-        }
+        try:
+            historic_data = await self._async_smartmeter.get_historic_data(
+                zaehlpunkt=zaehlpunkt,
+                date_from=lookup_start.date(),
+                date_to=now.date(),
+                granularity=ValueType.QUARTER_HOUR,
+            )
+            extracted = _extract_from_payload("historical_data", historic_data)
+            if extracted is not None:
+                return extracted
+        except Exception as exception:  # pylint: disable=broad-except
+            _LOGGER.debug(
+                "Live quarter-hour historical_data request failed for %s: %s",
+                zaehlpunkt,
+                exception,
+            )
+
+        return None, {}
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
